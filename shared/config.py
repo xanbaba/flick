@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_CONFIG_PATH = Path("config.yaml")
@@ -249,6 +249,18 @@ class EnvSettings(BaseSettings):
 
     demo_replay: bool = False
     local_mode: bool = False
+
+    @field_validator("demo_replay", "local_mode", mode="before")
+    @classmethod
+    def _blank_env_value_means_false(cls, value: object) -> object:
+        """.env.example ships every variable empty (AGENTS.md non-negotiable #1).
+
+        A plain `cp .env.example .env` must still boot: treat an unset
+        boolean flag as False rather than failing validation on "".
+        """
+        if value == "":
+            return False
+        return value
 
 
 class Settings(BaseModel):
