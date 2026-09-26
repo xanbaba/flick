@@ -231,6 +231,19 @@ class AnalyticsSummary(BaseModel):
 
 
 class GraphNode(BaseModel):
+    """A node as rendered on the dashboard's 3D memory graph.
+
+    label derivation (section 6.7): every node table except Memory has
+    a `name` column; Memory has `text` instead. GraphService.snapshot()
+    must derive label as:
+
+        label = props.get("name") or props["text"][:60]
+
+    Memory text is truncated to 60 characters because it is rendered
+    on a 3D node, not read. Without this rule a Memory node raises
+    KeyError: 'name' the first time the graph reaches the frontend.
+    """
+
     id: str
     label: str
     kind: Literal["Person", "Place", "Thing", "Activity", "Need", "Memory"]
