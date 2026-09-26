@@ -12,6 +12,8 @@ dependencies = [
   "pyzmq>=26.0",
   "numpy>=1.26",
   "scipy>=1.13",
+  "kuzu>=0.11.3",
+  "apricot-select>=0.6.1",
 ]
 
 [tool.uv]
