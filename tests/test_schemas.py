@@ -13,6 +13,7 @@ import pytest
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from shared.schemas import (
+    AnalyticsSummary,
     BusMessage,
     ClientMessage,
     EegChunk,
@@ -135,6 +136,15 @@ VALID_KWARGS: dict[type[BaseModel], dict] = {
         measured_refresh_hz=144.0,
         dropped_frames_last_s=0,
         frame_interval_std_ms=0.2,
+    ),
+    AnalyticsSummary: dict(
+        accuracy_pct=72.5,
+        itr_bits_per_min=18.3,
+        cued_trials=20,
+        mean_rho_by_target=[0.4, 0.5, 0.3, 0.6, 0.2],
+        selections_total=42,
+        mean_selection_latency_s=2.1,
+        drift=0.05,
     ),
     GraphNode: dict(
         id="n1",
@@ -263,3 +273,39 @@ def test_graph_node_and_edge_are_ws_payload_objects_not_bus_messages() -> None:
     assert "type" not in GraphEdge.model_fields
     assert GraphNode not in BUS_MESSAGE_MODELS
     assert GraphEdge not in BUS_MESSAGE_MODELS
+
+
+def test_analytics_summary_is_a_ws_payload_object_not_a_bus_message() -> None:
+    """AnalyticsSummary (section 6.6) carries no type field either."""
+    assert "type" not in AnalyticsSummary.model_fields
+    assert AnalyticsSummary not in BUS_MESSAGE_MODELS
+    assert AnalyticsSummary not in CLIENT_MESSAGE_MODELS
+
+
+def test_analytics_summary_accuracy_and_itr_are_nullable() -> None:
+    """Before any cued block has run, accuracy is undefined -- not zero,
+    not omitted, but explicitly null (section 18.3-18.4)."""
+    summary = AnalyticsSummary.model_validate(
+        {
+            "accuracy_pct": None,
+            "itr_bits_per_min": None,
+            "cued_trials": 0,
+            "mean_rho_by_target": [0.1, 0.2, 0.15, 0.1, 0.05],
+            "selections_total": 3,
+            "mean_selection_latency_s": 1.8,
+            "drift": 0.0,
+        }
+    )
+    assert summary.accuracy_pct is None
+    assert summary.itr_bits_per_min is None
+    assert summary.cued_trials == 0
+
+
+def test_analytics_summary_requires_the_key_even_when_the_value_is_null() -> None:
+    """Nullable is not the same as optional: cued_trials and the two
+    nullable fields must still be present in the payload."""
+    base = VALID_KWARGS[AnalyticsSummary]
+    for field_name in ("accuracy_pct", "itr_bits_per_min", "cued_trials"):
+        incomplete = {k: v for k, v in base.items() if k != field_name}
+        with pytest.raises(ValidationError):
+            AnalyticsSummary.model_validate(incomplete)

@@ -198,6 +198,34 @@ class StimulusIntegrity(BaseModel):
 
 
 # --------------------------------------------------------------------------
+# 6.6 WebSocket: P3 -> dashboard -- analytics.summary payload
+# --------------------------------------------------------------------------
+
+
+class AnalyticsSummary(BaseModel):
+    """Payload of the analytics.summary WS message, every 2 s (section 6.6).
+
+    accuracy_pct and itr_bits_per_min are nullable: both are undefined
+    until a cued block (section 18.4) has run, because accuracy has no
+    meaning without knowing what the user was supposed to pick.
+    cued_trials counts how many cued trials have been recorded so far
+    this session; when it is 0, SessionAnalytics.tsx greys those two
+    tiles with "run a cued block to measure" instead of rendering a
+    permanently blank chart, which reads as a bug during judging
+    (section 18.3). Everything else here comes from free conversation
+    and needs no cued block.
+    """
+
+    accuracy_pct: float | None
+    itr_bits_per_min: float | None
+    cued_trials: int
+    mean_rho_by_target: list[float]
+    selections_total: int
+    mean_selection_latency_s: float
+    drift: float
+
+
+# --------------------------------------------------------------------------
 # 6.7 Graph payload types (WebSocket: P3 -> dashboard)
 # --------------------------------------------------------------------------
 
