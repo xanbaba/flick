@@ -173,7 +173,7 @@ class GenerationService:
         if result is not None:
             return result
 
-        return self._fallback_candidates(intent)
+        return self._fallback_candidates(intent, context, context_node_ids)
 
     def _parse_candidates(self, raw: str, valid_ids: set[str]) -> CandidateResult | None:
         try:
@@ -200,16 +200,44 @@ class GenerationService:
 
         return CandidateResult(candidates=cleaned, grounding=grounding)
 
-    def _fallback_candidates(self, intent: str) -> CandidateResult:
-        intent_text = intent.strip() or "okay"
-        return CandidateResult(
-            candidates=[
-                intent_text.capitalize() + ".",
-                f"I mean {intent_text.lower()}, if that makes sense.",
-                f"What I'm trying to say is {intent_text.lower()} right now.",
-            ],
-            grounding=[],
-        )
+    def _fallback_candidates(
+        self, intent: str, context: str, context_node_ids: list[str]
+    ) -> CandidateResult:
+        """Offline placeholder (SW-13). When FACTS were supplied, the three
+
+        sentences are first-person restatements of those facts and the
+        grounding ids are the ones that were actually used, so a turn
+        with the static provider is still grounded. With no facts, the
+        sentences stay generic and grounding is empty.
+        """
+        facts = [
+            line.strip()[2:].strip()
+            for line in context.splitlines()
+            if line.strip().startswith("- ") and line.strip()[2:].strip()
+        ]
+        pairs = [(node_id, fact) for node_id, fact in zip(context_node_ids, facts, strict=False)]
+        pairs = [(node_id, fact) for node_id, fact in pairs if node_id and fact]
+        if not pairs:
+            intent_text = intent.strip() or "okay"
+            return CandidateResult(
+                candidates=[
+                    intent_text.capitalize() + ".",
+                    f"I mean {intent_text.lower()}, if that makes sense.",
+                    f"What I'm trying to say is {intent_text.lower()} right now.",
+                ],
+                grounding=[],
+            )
+
+        spoken = [_to_first_person(fact) for _, fact in pairs]
+        short = _short_clause(spoken[0])
+        medium = _finish(spoken[0])
+        if len(spoken) > 1:
+            longer = _finish(spoken[0]).rstrip(".") + ", and " + spoken[1].rstrip(".") + "."
+            grounding = [pairs[0][0], pairs[1][0]]
+        else:
+            longer = _finish(spoken[0]).rstrip(".") + ", and that is what I mean."
+            grounding = [pairs[0][0]]
+        return CandidateResult(candidates=[short, medium, longer], grounding=grounding)
 
     # ---------------------------------------------------------------- #
     # Shared plumbing
@@ -234,3 +262,37 @@ class GenerationService:
             "JSON object, nothing else.\n\n"
             f"{original_prompt}"
         )
+
+
+def _to_first_person(fact: str) -> str:
+    """Facts are stored in second person ("You call her mija"). Spoken
+
+    sentences are first person. This is a placeholder rewrite for the
+    offline provider, not a general paraphraser.
+    """
+    text = fact.strip()
+    for src, dst in (
+        ("You're ", "I'm "),
+        ("You ", "I "),
+        ("Your ", "My "),
+        ("your ", "my "),
+        (" you ", " I "),
+    ):
+        text = text.replace(src, dst)
+    return text
+
+
+def _finish(text: str) -> str:
+    sentence = text.strip().rstrip(".")
+    return sentence + "."
+
+
+def _short_clause(text: str) -> str:
+    """First clause, capped at 8 words, never ending on a dangling word."""
+    clause = text.split(",")[0].split(".")[0].strip()
+    words = clause.split()[:8]
+    while words and words[-1].lower().strip(".") in {"not", "and", "or", "the", "a", "to", "of"}:
+        words.pop()
+    if not words:
+        words = text.split()[:4]
+    return " ".join(words).rstrip(".") + "."

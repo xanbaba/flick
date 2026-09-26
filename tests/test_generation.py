@@ -126,7 +126,10 @@ def test_generate_candidates_with_static_fallback_never_raises(config: Generatio
         )
     )
     assert len(result.candidates) == 3
-    assert result.grounding == []
+    assert result.grounding == ["rosie"]
+    assert all(
+        "Rosie" in sentence or "rosie" in sentence.lower() for sentence in result.candidates[1:]
+    )
 
 
 def test_generate_candidates_drops_grounding_ids_not_in_context(config: GenerationConfig) -> None:
