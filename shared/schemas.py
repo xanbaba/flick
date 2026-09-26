@@ -79,7 +79,49 @@ class SensorStatus(BaseModel):  # 1 Hz
 
 
 # --------------------------------------------------------------------------
-# 6.3 ZMQ: P3 -> P2 stimulus (stim. prefix)
+# 6.3 WebSocket: dashboard -> P3 (client. prefix)
+#
+# The only inbound channel. Everything else the dashboard sends goes
+# over REST (section 6.8); this exists for input that must be
+# low-latency and ordered with the outbound stream. Inbound messages
+# that fail validation are logged and dropped, never raised to the
+# caller -- the dashboard is never trusted to drive anything
+# destructive.
+# --------------------------------------------------------------------------
+
+
+class KeyPress(BaseModel):
+    """Drives the keyboard input adapter (section 7.2).
+
+    The backend forwards this to the active InputSource; adapters
+    that do not consume key presses ignore it. Keys outside the
+    configured target count are dropped.
+    """
+
+    type: Literal["client.key_press"]
+    ts: float
+    key: str  # "1".."5"
+
+
+class RequestSnapshot(BaseModel):
+    """Sent on every (re)connect.
+
+    P3 replies with graph.snapshot and one sys.status so a
+    reconnecting dashboard is immediately consistent.
+    """
+
+    type: Literal["client.request_snapshot"]
+    ts: float
+
+
+ClientMessage = Annotated[
+    KeyPress | RequestSnapshot,
+    Field(discriminator="type"),
+]
+
+
+# --------------------------------------------------------------------------
+# 6.4 ZMQ: P3 -> P2 stimulus (stim. prefix)
 # --------------------------------------------------------------------------
 
 
@@ -100,7 +142,7 @@ class StimControl(BaseModel):
 
 
 # --------------------------------------------------------------------------
-# 6.4 ZMQ: P2 -> P3 (stim. prefix)
+# 6.5 ZMQ: P2 -> P3 (stim. prefix)
 # --------------------------------------------------------------------------
 
 
@@ -138,7 +180,7 @@ class StimulusIntegrity(BaseModel):
 
 
 # --------------------------------------------------------------------------
-# 6.5 WebSocket: P3 -> dashboard (graph payload sub-objects)
+# 6.7 Graph payload types (WebSocket: P3 -> dashboard)
 # --------------------------------------------------------------------------
 
 

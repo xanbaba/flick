@@ -2,15 +2,20 @@
 
 Build this first. It unblocks the entire team.
 
-Number keys 1-5, sent by the dashboard over the backend WebSocket,
-each produce a Selection with confidence 1.0 and source "keyboard".
-The persistent orange KEYBOARD INPUT badge is DEMO-3's enforcement in
-code that this is a development tool, never used in front of judges.
+Number keys 1-5, sent by the dashboard over the backend WebSocket as
+a client.key_press message (section 6.3), each produce a Selection
+with confidence 1.0 and source "keyboard". The persistent orange
+KEYBOARD INPUT badge is DEMO-3's enforcement in code that this is a
+development tool, never used in front of judges.
 
 This module has no knowledge of WebSockets or FastAPI (both live in
 backend/, out of scope here). The backend's WS handler is expected to
-call on_keypress() with the trial_id it last showed on the dashboard
-and the digit the pilot pressed.
+call handle_key_press() with the raw client.key_press payload it
+received. KeyPress carries no trial_id (section 6.3): the adapter
+attaches whichever trial_id is currently on screen from its own
+set_targets() state, so a key press arriving with no active trial
+(or after that trial already produced a Selection) is dropped rather
+than guessed at.
 """
 
 from __future__ import annotations
@@ -19,9 +24,11 @@ import asyncio
 import time
 from collections.abc import AsyncIterator
 
+from pydantic import ValidationError
+
 from inputs.base import InputSource
 from shared.logging import get_logger
-from shared.schemas import Selection
+from shared.schemas import KeyPress, Selection
 
 logger = get_logger(__name__)
 
@@ -49,17 +56,30 @@ class KeyboardInput(InputSource):
     async def set_targets(self, trial_id: str, labels: list[str], round: str) -> None:
         self._current_trial_id = trial_id
 
-    def on_keypress(self, trial_id: str, key: int) -> None:
-        """Feed one number-key event (1..n_targets) from the WebSocket.
+    def handle_key_press(self, raw: KeyPress | dict | str | bytes) -> None:
+        """Consume a raw client.key_press payload from the backend's WS layer.
 
-        Drops the event if trial_id does not match the trial currently
-        on screen (stale), or if the digit is out of range. Clears the
-        active trial after accepting one keypress, so at most one
-        Selection is ever emitted per trial_id.
+        Invalid messages (fails KeyPress validation, or a non-numeric
+        or out-of-range key) are logged and dropped, never raised to
+        the caller. Drops the event if there is no trial currently on
+        screen (stale or absent). Clears the active trial after
+        accepting one key press, so at most one Selection is ever
+        emitted per trial_id.
         """
-        if trial_id != self._current_trial_id:
-            logger.debug("keyboard.stale_selection_dropped", trial_id=trial_id)
+        message = self._parse(raw)
+        if message is None:
             return
+
+        if self._current_trial_id is None:
+            logger.debug("keyboard.key_press_dropped_no_active_trial")
+            return
+
+        try:
+            key = int(message.key)
+        except ValueError:
+            logger.warning("keyboard.non_numeric_key_dropped", key=message.key)
+            return
+
         if not (1 <= key <= self.n_targets):
             logger.warning("keyboard.key_out_of_range", key=key)
             return
@@ -67,7 +87,7 @@ class KeyboardInput(InputSource):
         selection = Selection(
             type="input.selection",
             ts=time.time(),
-            trial_id=trial_id,
+            trial_id=self._current_trial_id,
             target_idx=key - 1,
             confidence=1.0,
             source=self.name,
@@ -75,6 +95,17 @@ class KeyboardInput(InputSource):
         )
         self._current_trial_id = None  # at most one Selection per trial_id
         self._queue.put_nowait(selection)
+
+    def _parse(self, raw: KeyPress | dict | str | bytes) -> KeyPress | None:
+        try:
+            if isinstance(raw, KeyPress):
+                return raw
+            if isinstance(raw, str | bytes):
+                return KeyPress.model_validate_json(raw)
+            return KeyPress.model_validate(raw)
+        except ValidationError:
+            logger.warning("keyboard.invalid_key_press_dropped")
+            return None
 
     async def selections(self) -> AsyncIterator[Selection]:
         while True:

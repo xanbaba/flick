@@ -14,10 +14,13 @@ from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from shared.schemas import (
     BusMessage,
+    ClientMessage,
     EegChunk,
     GraphEdge,
     GraphNode,
+    KeyPress,
     PsdFrame,
+    RequestSnapshot,
     Selection,
     SensorStatus,
     ShowTargets,
@@ -74,6 +77,15 @@ VALID_KWARGS: dict[type[BaseModel], dict] = {
         samples_received=100,
         dropped_samples=0,
         railed_channels=[],
+    ),
+    KeyPress: dict(
+        type="client.key_press",
+        ts=1.0,
+        key="3",
+    ),
+    RequestSnapshot: dict(
+        type="client.request_snapshot",
+        ts=1.0,
     ),
     ShowTargets: dict(
         type="stim.show_targets",
@@ -134,7 +146,7 @@ MODEL_CASES = list(VALID_KWARGS.items())
 MODEL_IDS = [cls.__name__ for cls, _ in MODEL_CASES]
 
 # Models that carry "type" and "ts" and participate in the discriminated
-# BusMessage union (section 6.2-6.4 plus the section 6.1 selection contract).
+# BusMessage union: the ZMQ bus (section 6.1, 6.2, 6.4, 6.5).
 BUS_MESSAGE_MODELS = [
     Selection,
     EegChunk,
@@ -148,7 +160,15 @@ BUS_MESSAGE_MODELS = [
     StimulusIntegrity,
 ]
 
+# Models that carry "type" and "ts" and participate in the discriminated
+# ClientMessage union: the inbound WebSocket channel (section 6.3).
+CLIENT_MESSAGE_MODELS = [
+    KeyPress,
+    RequestSnapshot,
+]
+
 BUS_ADAPTER: TypeAdapter[BusMessage] = TypeAdapter(BusMessage)
+CLIENT_ADAPTER: TypeAdapter[ClientMessage] = TypeAdapter(ClientMessage)
 
 
 @pytest.mark.parametrize("model_cls,kwargs", MODEL_CASES, ids=MODEL_IDS)
@@ -196,8 +216,37 @@ def test_discriminated_union_rejects_an_unknown_type() -> None:
         BUS_ADAPTER.validate_python({"type": "not.a.real.type", "ts": time.time()})
 
 
+@pytest.mark.parametrize(
+    "model_cls", CLIENT_MESSAGE_MODELS, ids=[m.__name__ for m in CLIENT_MESSAGE_MODELS]
+)
+def test_every_client_message_carries_type_and_ts(model_cls: type[BaseModel]) -> None:
+    assert "type" in model_cls.model_fields
+    assert "ts" in model_cls.model_fields
+
+
+@pytest.mark.parametrize(
+    "model_cls", CLIENT_MESSAGE_MODELS, ids=[m.__name__ for m in CLIENT_MESSAGE_MODELS]
+)
+def test_client_message_union_resolves_to_the_correct_model(model_cls: type[BaseModel]) -> None:
+    instance = model_cls.model_validate(VALID_KWARGS[model_cls])
+    resolved = CLIENT_ADAPTER.validate_json(instance.model_dump_json())
+    assert type(resolved) is model_cls
+    assert resolved == instance
+
+
+def test_client_message_union_rejects_an_unknown_type() -> None:
+    with pytest.raises(ValidationError):
+        CLIENT_ADAPTER.validate_python({"type": "not.a.real.type", "ts": time.time()})
+
+
+def test_bus_and_client_unions_do_not_overlap() -> None:
+    """KeyPress/RequestSnapshot are WS-inbound, not ZMQ bus messages,
+    and vice versa: the two discriminated unions are disjoint."""
+    assert not set(CLIENT_MESSAGE_MODELS) & set(BUS_MESSAGE_MODELS)
+
+
 def test_graph_node_and_edge_are_ws_payload_objects_not_bus_messages() -> None:
-    """GraphNode/GraphEdge (section 6.5) carry no type field: they are
+    """GraphNode/GraphEdge (section 6.7) carry no type field: they are
     WebSocket payload sub-objects, not top-level ZMQ bus messages."""
     assert "type" not in GraphNode.model_fields
     assert "type" not in GraphEdge.model_fields
