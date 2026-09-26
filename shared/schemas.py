@@ -67,6 +67,24 @@ class TargetScores(BaseModel):  # 4 Hz
     dwell_count: int
 
 
+class SensorSelection(BaseModel):  # topic "bci.selection", event
+    """Emitted by the sensor process when its decision state machine fires.
+
+    The ssvep input adapter (section 7.3) maps this onto the generic
+    Selection of section 6.1. This is the raw, classifier-level
+    event; Selection is the adapter-independent one the orchestrator
+    consumes.
+    """
+
+    type: Literal["bci.selection"]
+    ts: float
+    trial_id: str
+    target_idx: int
+    rho: float
+    margin: float
+    algorithm: Literal["fbcca", "etrca"]
+
+
 class SensorStatus(BaseModel):  # 1 Hz
     type: Literal["bci.status"]
     ts: float
@@ -209,6 +227,7 @@ BusMessage = Annotated[
     | EegChunk
     | PsdFrame
     | TargetScores
+    | SensorSelection
     | SensorStatus
     | ShowTargets
     | StimControl

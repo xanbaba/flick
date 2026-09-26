@@ -2,9 +2,15 @@
 
 Standalone process, not part of the sensor package (sensor/ is out of
 scope for this build). It publishes bci.eeg (~4 Hz), bci.psd (~4 Hz),
-bci.scores (4 Hz) and bci.status (1 Hz) on ZMQ 5555, at the rates
-given in ARCHITECTURE.md section 6.2, so the judge dashboard's plots
-can be built and demonstrated before any OpenBCI hardware exists.
+bci.scores (4 Hz), bci.selection (event, on dwell) and bci.status
+(1 Hz) on ZMQ 5555, at the rates given in ARCHITECTURE.md section 6.2,
+so the judge dashboard's plots can be built and demonstrated before
+any OpenBCI hardware exists. Publishing bci.selection closes the loop
+for inputs/ssvep.py: it subscribes to stim.show_targets on 5556 (the
+same port the real P1 sensor listens on, per the section 3.2 process
+table) to learn the current trial_id, so a genuine dwell completion
+here produces something inputs/ssvep.py can actually consume end to
+end, with no hardware in the loop.
 
 The generated EEG is pink noise plus a slow-modulated 10 Hz alpha
 bump, 60 Hz line noise and Poisson blink artifacts, matching the
@@ -46,10 +52,19 @@ from scipy.signal import butter, filtfilt, iirnotch, lfilter, sosfiltfilt, welch
 # without installing the project as a package.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from shared.bus import Publisher  # noqa: E402
+from pydantic import ValidationError  # noqa: E402
+
+from shared.bus import Publisher, Subscriber  # noqa: E402
 from shared.config import AppConfig, StimulusProfileSpec, load_config  # noqa: E402
 from shared.logging import configure_logging, get_logger  # noqa: E402
-from shared.schemas import EegChunk, PsdFrame, SensorStatus, TargetScores  # noqa: E402
+from shared.schemas import (  # noqa: E402
+    EegChunk,
+    PsdFrame,
+    SensorSelection,
+    SensorStatus,
+    ShowTargets,
+    TargetScores,
+)
 
 logger = get_logger(__name__)
 
@@ -277,9 +292,12 @@ def _compute_rho(buffer: np.ndarray, fs: int, frequencies: list[float]) -> np.nd
 class DwellTracker:
     """Mirrors the decision state machine's dwell counter (section 8.5).
 
-    Cosmetic only -- fake_sensor never emits a Selection. It exists
-    so bci.scores.dwell_count behaves the way the real classifier's
-    would, for dashboard development.
+    Drives bci.scores.dwell_count the way the real classifier's would,
+    for dashboard development, and also reports when a dwell actually
+    completes (fired=True) so the caller can emit a real bci.selection
+    for it -- this is the one place fake_sensor's simulated decision
+    state machine "fires" a selection, per section 8.5's
+    DWELL(w, dwell_windows) -> emit Selection -> REFRACTORY.
     """
 
     def __init__(self, rho_threshold: float, margin_ratio: float, dwell_windows: int) -> None:
@@ -289,7 +307,7 @@ class DwellTracker:
         self._winner: int | None = None
         self._count = 0
 
-    def update(self, rho: np.ndarray) -> tuple[int, float, bool, int]:
+    def update(self, rho: np.ndarray) -> tuple[int, float, bool, int, bool]:
         order = np.argsort(rho)[::-1]
         winner_idx = int(order[0])
         second_best = float(rho[order[1]]) if len(order) > 1 else 0.0
@@ -306,11 +324,66 @@ class DwellTracker:
             self._winner = None
             self._count = 0
 
-        if self._count >= self._dwell_windows:
+        fired = self._count >= self._dwell_windows
+        if fired:
             self._count = 0
             self._winner = None
 
-        return winner_idx, margin, above_threshold, self._count
+        return winner_idx, margin, above_threshold, self._count, fired
+
+
+def build_sensor_selection(
+    trial_id: str, winner_idx: int, rho: np.ndarray, margin: float, ts: float
+) -> SensorSelection:
+    """The bci.selection event a real P1 would emit on dwell completion.
+
+    Factored out so both main()'s loop and tests build it the same
+    way (section 6.2). algorithm is fixed at "fbcca" here for the
+    same reason bci.scores is: fake_sensor has no calibration file to
+    make eTRCA a real choice.
+    """
+    return SensorSelection(
+        type="bci.selection",
+        ts=ts,
+        trial_id=trial_id,
+        target_idx=winner_idx,
+        rho=float(rho[winner_idx]),
+        margin=margin,
+        algorithm="fbcca",
+    )
+
+
+class TrialTracker:
+    """Learns the current trial_id from stim.show_targets on ZMQ 5556.
+
+    Mirrors how the real P1 sensor subscribes to P3's outbound 5556
+    channel (section 3.2) to know what trial is on screen. Cleared
+    once a selection has been emitted for it, so a later dwell with
+    no fresh show_targets in between has nothing stale to attach to.
+    """
+
+    def __init__(self, address: str) -> None:
+        self._subscriber = Subscriber(address)
+        self._current_trial_id: str | None = None
+
+    def poll(self) -> None:
+        while self._subscriber.poll(timeout_ms=0):
+            try:
+                show_targets = self._subscriber.recv_as(ShowTargets)
+            except ValidationError:
+                logger.warning("fake_sensor.malformed_show_targets_dropped")
+                continue
+            self._current_trial_id = show_targets.trial_id
+
+    @property
+    def current_trial_id(self) -> str | None:
+        return self._current_trial_id
+
+    def clear(self) -> None:
+        self._current_trial_id = None
+
+    def close(self) -> None:
+        self._subscriber.close()
 
 
 def _read_keyboard_control(attended: AttendedTarget, n_targets: int) -> None:
@@ -338,6 +411,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", default="config.yaml", help="path to config.yaml")
     parser.add_argument("--address", default="tcp://127.0.0.1:5555", help="ZMQ PUB bind address")
+    parser.add_argument(
+        "--stim-address",
+        default="tcp://127.0.0.1:5556",
+        help="ZMQ SUB address for stim.show_targets, to learn the current trial_id",
+    )
     parser.add_argument(
         "--profile", choices=["hi", "lo"], default=None, help="override stim profile"
     )
@@ -370,6 +448,7 @@ def main() -> None:
     )
     control_thread.start()
 
+    trial_tracker = TrialTracker(args.stim_address)
     publisher = Publisher(args.address)
     logger.info(
         "fake_sensor.started",
@@ -422,8 +501,10 @@ def main() -> None:
                 PsdFrame(type="bci.psd", ts=now, freqs=freqs, power=power_db, peaks=peaks)
             )
 
+            trial_tracker.poll()
+
             rho = _compute_rho(filtered_buffer, fs, profile.frequencies)
-            winner_idx, margin, above_threshold, dwell_count = dwell.update(rho)
+            winner_idx, margin, above_threshold, dwell_count, fired = dwell.update(rho)
             publisher.send(
                 TargetScores(
                     type="bci.scores",
@@ -436,6 +517,14 @@ def main() -> None:
                     dwell_count=dwell_count,
                 )
             )
+
+            if fired and trial_tracker.current_trial_id is not None:
+                publisher.send(
+                    build_sensor_selection(
+                        trial_tracker.current_trial_id, winner_idx, rho, margin, now
+                    )
+                )
+                trial_tracker.clear()
 
             if tick % 4 == 0:
                 publisher.send(
@@ -458,6 +547,7 @@ def main() -> None:
         logger.info("fake_sensor.stopped")
     finally:
         publisher.close()
+        trial_tracker.close()
 
 
 if __name__ == "__main__":
