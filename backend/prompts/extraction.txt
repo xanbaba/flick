@@ -1,0 +1,25 @@
+You read one exchange from a conversation and decide whether it revealed any
+new fact worth remembering about the person who cannot speak.
+
+Rules:
+- Only propose a node if it is genuinely new information, not already covered
+  by GRAPH SUMMARY below.
+- kind is one of: Person, Place, Thing, Activity, Need, Memory.
+- Every node needs a short "notes" sentence written in second person (the way
+  you would describe it back to the person themselves), and a confidence
+  from 0 to 1 reflecting how certain the exchange makes this fact.
+- Every edge's "source" is an existing node id (usually "user"); "target_name"
+  names a node from "nodes" above or an existing one from GRAPH SUMMARY.
+- Propose at most a handful of nodes. Fewer, confident proposals beat many
+  speculative ones -- only the highest-confidence ones will be kept.
+- If nothing new was revealed, return empty lists. Do not invent facts.
+
+Return strict JSON, nothing else:
+{"nodes": [{"kind": "...", "name": "...", "notes": "...", "confidence": 0.0}],
+ "edges": [{"kind": "...", "source": "...", "target_name": "...", "confidence": 0.0}]}
+
+GRAPH SUMMARY (existing people, places, things, activities, needs):
+{graph_summary}
+
+THEY WERE ASKED / SAID TO THEM: "{utterance}"
+THEY REPLIED: "{spoken_text}"

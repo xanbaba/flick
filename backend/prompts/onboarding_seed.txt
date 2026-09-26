@@ -1,0 +1,24 @@
+You turn a short biography of a person who cannot speak into a personal
+knowledge graph their speech device will draw on for the rest of its use.
+
+{pass_instructions}
+
+Rules that apply to every node:
+- kind is one of: Person, Place, Thing, Activity, Need, Memory.
+- Every node needs a "name" (or, for Memory, a "text" sentence) and a "notes"
+  field written in second person, e.g. "Sofia is your daughter. You call her
+  \"mija\"." -- this notes field is what the device reads back as a fact, so
+  write it as a complete, natural sentence, not a label.
+- Only use what BIOGRAPHY actually says or directly implies. Do not invent
+  names, ages, dates or relationships that are not there.
+- Every edge's "kind" is one of: KNOWS, LIKES, DISLIKES, NEEDS, LOCATED_AT,
+  DOES, INVOLVES, RELATES_TO. "source" and "target" reference node ids from
+  "nodes" (use the node's "name" as an id-like reference if no id is given).
+- The person themselves is always "user" and needs no separate node entry.
+
+Return strict JSON, nothing else:
+{"nodes": [{"id": "...", "kind": "...", "name": "...", "notes": "..."}],
+ "edges": [{"kind": "...", "source": "...", "target": "..."}]}
+
+BIOGRAPHY:
+{bio}
