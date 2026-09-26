@@ -1,0 +1,133 @@
+input:
+  adapter: keyboard          # keyboard | ssvep | replay | emotiv
+  replay_file: null
+
+mode:
+  source: synthetic          # cyton | synthetic | replay   (sensor process)
+  targets: 5                 # 5 | 4
+
+eeg:
+  board: cyton
+  sample_rate: 250
+  channels: [0, 1, 2, 3, 4, 5, 6, 7]
+  channel_names: [O1, Oz, O2, POz, PO3, PO4, Pz, CPz]
+  serial_port: auto
+
+dsp:
+  hop_s: 0.25
+  notch_hz: 60.0
+  notch_q: 30.0
+  bandpass_high_hz: 48.0
+  bandpass_order: 4
+  # window_s and bandpass_low_hz come from the active stimulus profile
+
+stimulus:
+  profile: auto              # auto | hi | lo
+  tile_layout: cross
+  tile_px: 320
+  contrast: 0.85
+  cue_duration_s: 1.0
+  label_font_px: 34
+  integrity_drop_threshold: 5
+
+  profiles:
+    hi:
+      min_refresh_hz: 120
+      render: sinusoid
+      frequencies: [8.0, 9.6, 11.4, 13.2, 15.0]
+      phases:      [0.0, 1.5707963, 3.1415927, 4.7123890, 0.0]
+      cancel_idx: 4
+      window_s: 1.25
+      bandpass_low_hz: 6.0
+      fbcca_subband_low_hz: [6, 14, 22, 30, 38]
+    lo:
+      min_refresh_hz: 0
+      render: divisor        # exact divisors of 60: 9, 8, 7, 5, 6
+      frequencies: [6.667, 7.5, 8.571, 12.0, 10.0]
+      phases:      [0.0, 1.5707963, 3.1415927, 4.7123890, 0.0]
+      cancel_idx: 4          # 10.0 Hz: alpha-adjacent, lowest-cost false positive
+      window_s: 2.0
+      bandpass_low_hz: 5.0
+      fbcca_subband_low_hz: [5, 12, 19, 26, 33]
+
+classify:
+  algorithm: auto            # auto | fbcca | etrca
+  harmonics: 3
+  fbcca:
+    n_subbands: 5
+    subband_high_hz: 48
+    weight_a: 1.25
+    weight_b: 0.25
+  etrca:
+    calibration_max_age_s: 7200
+    model_dir: ./data/calibration
+
+decision:
+  rho_threshold: 0.35
+  margin_ratio: 1.15
+  dwell_windows: 3
+  refractory_s: 1.0
+
+calibration:
+  blocks: 5
+  trial_s: 3.0
+  rest_s: 1.0
+
+graph:
+  db_path: ./data/kuzu
+  embedding_dim: 384
+
+retrieval:
+  vector_top_k: 25
+  hops: 2
+  candidate_cap: 60
+  select_k: 8
+
+generation:
+  n_intents: 4
+  n_candidates: 3
+  max_tokens: 400
+  timeout_s: 6.0
+
+extraction:
+  enabled: true
+  confidence_threshold: 0.7
+  max_new_nodes_per_turn: 4
+  dedup_similarity: 0.88
+
+reinforcement:
+  edge_increment: 0.15
+  node_increment: 0.10
+  max_weight: 5.0
+
+voice:
+  cache_first: true
+  cache_dir: ./data/audio_cache
+
+telemetry:
+  enabled: true
+  queue_maxsize: 2000        # bounded; DROPS on overflow, never blocks
+  flush_interval_ms: 500
+  flush_batch: 500
+  eeg_downsample: 1
+  compress_after: 10m
+
+spectator:
+  enabled: true
+  url: wss://<domain>/producer
+  throttle_hz: 1.0
+  send_raw_eeg: false        # NEVER true
+  send_graph_content: false
+
+privacy:
+  local_mode: false
+  show_costs: true
+  price_table:
+    gemini_in_per_1k: 0.000075
+    gemini_out_per_1k: 0.0003
+    elevenlabs_per_1k_chars: 0.30
+    deepgram_per_minute: 0.0043
+
+recording:
+  enabled: true
+  dir: ./data/sessions
