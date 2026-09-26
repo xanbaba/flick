@@ -9,6 +9,7 @@ logged and dropped, never raised to the caller.
 
 from __future__ import annotations
 
+import asyncio
 import time
 from collections.abc import Awaitable, Callable
 
@@ -16,8 +17,16 @@ from fastapi import WebSocket, WebSocketDisconnect
 from pydantic import TypeAdapter, ValidationError
 
 from inputs.base import InputSource
+from shared.bus import Subscriber
 from shared.logging import get_logger
-from shared.schemas import ClientMessage, KeyPress, RequestSnapshot
+from shared.schemas import (
+    ClientMessage,
+    EegChunk,
+    KeyPress,
+    PsdFrame,
+    RequestSnapshot,
+    TargetScores,
+)
 
 logger = get_logger(__name__)
 
@@ -51,6 +60,40 @@ class Hub:
 
     async def send(self, ws: WebSocket, message_type: str, payload: dict[str, object]) -> None:
         await ws.send_json({"type": message_type, "ts": time.time(), "payload": payload})
+
+
+async def relay_sensor(hub: Hub, address: str) -> None:
+    """Rebroadcast P1's bci.eeg / bci.psd / bci.scores onto the dashboard socket.
+
+    SUB connect does not require the sensor to be up. Frames that are
+    not one of those three types (status, selections, stimulus) are
+    ignored here; status is assembled by the app's own 1 Hz loop.
+    """
+    subscriber = Subscriber(address)
+    try:
+        while True:
+            if subscriber.poll(50):
+                try:
+                    message = subscriber.recv()
+                except ValidationError:
+                    logger.warning("ws.malformed_sensor_frame_dropped")
+                    continue
+                if isinstance(message, EegChunk):
+                    await hub.broadcast(
+                        "eeg.trace",
+                        {"channels": message.channels, "data": message.data, "fs": message.fs},
+                    )
+                elif isinstance(message, PsdFrame):
+                    await hub.broadcast(
+                        "eeg.psd",
+                        {"freqs": message.freqs, "power": message.power, "peaks": message.peaks},
+                    )
+                elif isinstance(message, TargetScores):
+                    await hub.broadcast("bci.scores", message.model_dump())
+            else:
+                await asyncio.sleep(0)
+    finally:
+        subscriber.close()
 
 
 async def serve(

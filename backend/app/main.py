@@ -20,11 +20,12 @@ from pydantic import BaseModel
 from backend.app.orchestrator import IDLE, UNSEEDED, Orchestrator
 from backend.app.services.analytics import AnalyticsService
 from backend.app.services.cost import CostTracker
+from backend.app.services.cost import flows as recorded_flows
 from backend.app.services.spectator import SpectatorService
 from backend.app.services.speech import SpeechService
 from backend.app.services.telemetry import TelemetryService
 from backend.app.services.voice import VoiceService
-from backend.app.ws import Hub, serve
+from backend.app.ws import Hub, relay_sensor, serve
 from backend.providers.registry import health_snapshot
 from inputs.base import InputSource
 from inputs.keyboard import KeyboardInput
@@ -101,7 +102,6 @@ def create_app() -> FastAPI:
         voice_id=settings.env.elevenlabs_voice_id or None,
     )
     flags = {"local_mode": config.privacy.local_mode or settings.env.local_mode}
-    flows: list[dict[str, object]] = []
     input_box: dict[str, InputSource] = {
         "source": build_input(config.input.adapter, config.mode.targets)
     }
@@ -167,6 +167,7 @@ def create_app() -> FastAPI:
         await orchestrator.start()
         background.append(asyncio.create_task(status_loop()))
         background.append(asyncio.create_task(analytics_loop()))
+        background.append(asyncio.create_task(relay_sensor(hub, SENSOR_ADDRESS)))
         logger.info("backend.started", adapter=config.input.adapter)
         yield
         for task in background:
@@ -181,7 +182,6 @@ def create_app() -> FastAPI:
     app.state.analytics = analytics
     app.state.spectator = spectator
     app.state.flags = flags
-    app.state.flows = flows
 
     @app.get("/api/health")
     async def health() -> dict[str, object]:
@@ -254,7 +254,7 @@ def create_app() -> FastAPI:
 
     @app.get("/api/privacy/flows")
     async def privacy_flows() -> dict[str, object]:
-        return {"flows": flows}
+        return {"flows": recorded_flows()}
 
     @app.post("/api/privacy/purge")
     async def purge(body: PurgeBody) -> dict[str, str]:

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import httpx
 
+from backend.app.services.cost import outbound
 from backend.providers.base import LLMProvider
 
 _API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
@@ -25,6 +26,7 @@ class GeminiLLMProvider(LLMProvider):
         self._api_key = api_key
         self._model = model or "gemini-2.5-flash"
 
+    @outbound("llm", "Gemini (Google)", "intent labels, sentences, fact extraction")
     async def complete(
         self,
         system: str,

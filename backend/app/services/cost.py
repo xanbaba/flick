@@ -1,4 +1,4 @@
-"""Per-turn cost accounting (ARCHITECTURE.md section 20).
+"""Per-turn cost accounting and the outbound data-flow ledger (section 20).
 
 "cost.py accumulates tokens, characters and audio seconds per turn,
 multiplies by privacy.price_table, emits privacy.cost." A disabled
@@ -15,9 +15,56 @@ turn's total into the running session total.
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
+from typing import TypeVar
+
 from pydantic import BaseModel
 
 from shared.config import PriceTable
+
+F = TypeVar("F", bound=Callable[..., Awaitable[object]])
+
+_flows: list[dict[str, object]] = []
+
+
+def record_flow(stage: str, destination: str, nbytes: int, description: str) -> None:
+    """Append one privacy.flow entry. Never raises."""
+    _flows.append(
+        {
+            "stage": stage,
+            "destination": destination,
+            "bytes": nbytes,
+            "description": description,
+        }
+    )
+
+
+def flows() -> list[dict[str, object]]:
+    return list(_flows)
+
+
+def clear_flows() -> None:
+    _flows.clear()
+
+
+def outbound(stage: str, destination: str, description: str) -> Callable[[F], F]:
+    """Decorator for a provider method that leaves the machine.
+
+    Records a privacy.flow entry only after the call succeeds, so a
+    failed attempt that never sent a body is not reported as a transfer.
+    """
+
+    def decorate(method: F) -> F:
+        async def wrapped(self: object, *args: object, **kwargs: object) -> object:
+            result = await method(self, *args, **kwargs)
+            payload = args[0] if args else result
+            nbytes = len(payload) if isinstance(payload, bytes | str) else 0
+            record_flow(stage, destination, nbytes, description)
+            return result
+
+        return wrapped  # type: ignore[return-value]
+
+    return decorate
 
 
 class CostItem(BaseModel):

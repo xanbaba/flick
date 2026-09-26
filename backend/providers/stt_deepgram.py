@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import httpx
 
+from backend.app.services.cost import outbound
 from backend.providers.base import STTProvider, Transcript
 
 _URL = "https://api.deepgram.com/v1/listen"
@@ -23,6 +24,7 @@ class DeepgramSTTProvider(STTProvider):
             raise ValueError("deepgram requires an API key")
         self._api_key = api_key
 
+    @outbound("stt", "Deepgram", "microphone audio")
     async def transcribe(self, pcm: bytes, sample_rate: int) -> Transcript:
         headers = {
             "Authorization": f"Token {self._api_key}",
