@@ -1,0 +1,3251 @@
+{
+  "nodes": [
+    {
+      "id": "user",
+      "kind": "Person",
+      "name": "Marcus Alvarez",
+      "relationship": "self",
+      "address_terms": [],
+      "notes": "You are Marcus Alvarez, 54, and this graph is yours."
+    },
+    {
+      "id": "sofia",
+      "kind": "Person",
+      "name": "Sofia",
+      "relationship": "daughter",
+      "address_terms": [
+        "mija"
+      ],
+      "notes": "Sofia is your daughter. You call her \"mija\". She visits on Sunday afternoons."
+    },
+    {
+      "id": "mateo",
+      "kind": "Person",
+      "name": "Mateo",
+      "relationship": "grandson",
+      "address_terms": [],
+      "notes": "Mateo is your grandson. He is four, and he is Sofia's son."
+    },
+    {
+      "id": "elena",
+      "kind": "Person",
+      "name": "Elena",
+      "relationship": "wife",
+      "address_terms": [],
+      "notes": "Elena is your wife. She manages your care."
+    },
+    {
+      "id": "priya",
+      "kind": "Person",
+      "name": "Priya",
+      "relationship": "home nurse",
+      "address_terms": [],
+      "notes": "Priya is your home nurse. She comes on weekday mornings."
+    },
+    {
+      "id": "miami",
+      "kind": "Place",
+      "name": "Miami",
+      "notes": "You live in Miami."
+    },
+    {
+      "id": "home",
+      "kind": "Place",
+      "name": "home",
+      "notes": "Your home in Miami is where care, visits, and Rosie all happen."
+    },
+    {
+      "id": "living_room",
+      "kind": "Place",
+      "name": "living room",
+      "notes": "The living room holds the recliner you avoid and the window you prefer."
+    },
+    {
+      "id": "window_seat",
+      "kind": "Place",
+      "name": "window seat",
+      "notes": "You prefer the window seat, where you can see the jacaranda tree."
+    },
+    {
+      "id": "yard",
+      "kind": "Place",
+      "name": "yard",
+      "notes": "The jacaranda tree stands where you can see it from the window seat."
+    },
+    {
+      "id": "high_school",
+      "kind": "Place",
+      "name": "the high school",
+      "notes": "You used to teach music at a high school in Miami."
+    },
+    {
+      "id": "classroom",
+      "kind": "Place",
+      "name": "the music classroom",
+      "notes": "Your old classroom is where you taught high-school music."
+    },
+    {
+      "id": "band_room",
+      "kind": "Place",
+      "name": "the band room",
+      "notes": "The band room is where you rehearsed students and kept the trumpet close."
+    },
+    {
+      "id": "kitchen",
+      "kind": "Place",
+      "name": "kitchen",
+      "notes": "The kitchen is where your unreasonably strong coffee gets made."
+    },
+    {
+      "id": "rosie",
+      "kind": "Thing",
+      "name": "Rosie",
+      "category": "pet",
+      "notes": "Rosie is your dog, a nine-year-old beagle who sleeps under your chair."
+    },
+    {
+      "id": "recliner",
+      "kind": "Thing",
+      "name": "living-room recliner",
+      "category": "furniture",
+      "notes": "You hate the living-room recliner because it hurts your lower back."
+    },
+    {
+      "id": "chair",
+      "kind": "Thing",
+      "name": "your chair",
+      "category": "furniture",
+      "notes": "Rosie sleeps under your chair. It is not the recliner."
+    },
+    {
+      "id": "trumpet",
+      "kind": "Thing",
+      "name": "trumpet",
+      "category": "instrument",
+      "notes": "You used to play trumpet in a salsa band called Los Vientos."
+    },
+    {
+      "id": "trumpet_case",
+      "kind": "Thing",
+      "name": "trumpet case",
+      "category": "instrument",
+      "notes": "Your trumpet case is part of the Los Vientos years."
+    },
+    {
+      "id": "mouthpiece",
+      "kind": "Thing",
+      "name": "trumpet mouthpiece",
+      "category": "instrument",
+      "notes": "The mouthpiece belongs to the trumpet you played in Los Vientos."
+    },
+    {
+      "id": "coffee",
+      "kind": "Thing",
+      "name": "coffee",
+      "category": "food",
+      "notes": "You like your coffee unreasonably strong."
+    },
+    {
+      "id": "coffee_mug",
+      "kind": "Thing",
+      "name": "coffee mug",
+      "category": "food",
+      "notes": "The mug is how your unreasonably strong coffee gets to you."
+    },
+    {
+      "id": "coffee_pot",
+      "kind": "Thing",
+      "name": "coffee pot",
+      "category": "food",
+      "notes": "The pot is where the unreasonably strong coffee is brewed."
+    },
+    {
+      "id": "jacaranda",
+      "kind": "Thing",
+      "name": "jacaranda tree",
+      "category": "plant",
+      "notes": "The jacaranda tree is what you watch from the window seat."
+    },
+    {
+      "id": "jacaranda_blossoms",
+      "kind": "Thing",
+      "name": "jacaranda blossoms",
+      "category": "plant",
+      "notes": "The jacaranda blossoms are the part of the tree you can see from the window seat."
+    },
+    {
+      "id": "television",
+      "kind": "Thing",
+      "name": "television",
+      "category": "device",
+      "notes": "You watch Marlins games on the television with the sound off."
+    },
+    {
+      "id": "remote",
+      "kind": "Thing",
+      "name": "remote",
+      "category": "device",
+      "notes": "The remote is how the Marlins broadcast gets muted."
+    },
+    {
+      "id": "marlins",
+      "kind": "Thing",
+      "name": "the Marlins",
+      "category": "team",
+      "notes": "You watch Marlins games with the sound off."
+    },
+    {
+      "id": "sheet_music",
+      "kind": "Thing",
+      "name": "sheet music",
+      "category": "music",
+      "notes": "Sheet music is what you taught from as a high-school music teacher."
+    },
+    {
+      "id": "music_stand",
+      "kind": "Thing",
+      "name": "music stand",
+      "category": "music",
+      "notes": "The music stand belonged to your teaching and to the trumpet."
+    },
+    {
+      "id": "metronome",
+      "kind": "Thing",
+      "name": "metronome",
+      "category": "music",
+      "notes": "The metronome was a classroom tool from your music-teaching years."
+    },
+    {
+      "id": "lesson_plans",
+      "kind": "Thing",
+      "name": "lesson plans",
+      "category": "music",
+      "notes": "Lesson plans were part of teaching music at the high school."
+    },
+    {
+      "id": "los_vientos",
+      "kind": "Thing",
+      "name": "Los Vientos",
+      "category": "band",
+      "notes": "Los Vientos is the salsa band you used to play trumpet in."
+    },
+    {
+      "id": "salsa_music",
+      "kind": "Thing",
+      "name": "salsa music",
+      "category": "music",
+      "notes": "Salsa is the music Los Vientos played, with you on trumpet."
+    },
+    {
+      "id": "als",
+      "kind": "Thing",
+      "name": "ALS",
+      "category": "condition",
+      "notes": "You were diagnosed with ALS three years ago."
+    },
+    {
+      "id": "lower_back",
+      "kind": "Thing",
+      "name": "lower back",
+      "category": "body",
+      "notes": "Your lower back is why the living-room recliner hurts and why you avoid it."
+    },
+    {
+      "id": "school_band",
+      "kind": "Thing",
+      "name": "the school band",
+      "category": "music",
+      "notes": "The school band is what you directed as a high-school music teacher."
+    },
+    {
+      "id": "concert_program",
+      "kind": "Thing",
+      "name": "concert program",
+      "category": "music",
+      "notes": "Concert programs were the public face of the high-school music job."
+    },
+    {
+      "id": "music_folder",
+      "kind": "Thing",
+      "name": "music folder",
+      "category": "music",
+      "notes": "Your music folder held the charts from teaching and from Los Vientos."
+    },
+    {
+      "id": "broadcast",
+      "kind": "Thing",
+      "name": "Marlins broadcast",
+      "category": "media",
+      "notes": "The Marlins broadcast is what you watch with the sound off."
+    },
+    {
+      "id": "trumpet_valves",
+      "kind": "Thing",
+      "name": "trumpet valves",
+      "category": "instrument",
+      "notes": "The valves are the part of the trumpet your hands can no longer work reliably."
+    },
+    {
+      "id": "window_glass",
+      "kind": "Thing",
+      "name": "window glass",
+      "category": "home",
+      "notes": "The window glass is what the jacaranda sits behind when you take the window seat."
+    },
+    {
+      "id": "teaching_music",
+      "kind": "Activity",
+      "name": "teaching music",
+      "time_of_day": "daytime",
+      "notes": "You used to teach music at a high school in Miami."
+    },
+    {
+      "id": "band_rehearsal",
+      "kind": "Activity",
+      "name": "band rehearsal",
+      "time_of_day": "daytime",
+      "notes": "Band rehearsal was the school-day work of directing the high-school band."
+    },
+    {
+      "id": "classroom_lessons",
+      "kind": "Activity",
+      "name": "classroom lessons",
+      "time_of_day": "daytime",
+      "notes": "Classroom lessons were how you taught music before ALS."
+    },
+    {
+      "id": "sunday_visit",
+      "kind": "Activity",
+      "name": "Sunday visit",
+      "time_of_day": "afternoon",
+      "notes": "Sofia visits on Sunday afternoons."
+    },
+    {
+      "id": "morning_nursing",
+      "kind": "Activity",
+      "name": "morning nursing",
+      "time_of_day": "morning",
+      "notes": "Priya comes on weekday mornings to nurse you at home."
+    },
+    {
+      "id": "care_management",
+      "kind": "Activity",
+      "name": "care management",
+      "time_of_day": "daytime",
+      "notes": "Elena manages your care."
+    },
+    {
+      "id": "playing_trumpet",
+      "kind": "Activity",
+      "name": "playing trumpet",
+      "time_of_day": "evening",
+      "notes": "You used to play trumpet in Los Vientos."
+    },
+    {
+      "id": "salsa_gigs",
+      "kind": "Activity",
+      "name": "Los Vientos gigs",
+      "time_of_day": "evening",
+      "notes": "Los Vientos played salsa, and you were the trumpet."
+    },
+    {
+      "id": "watching_marlins",
+      "kind": "Activity",
+      "name": "watching the Marlins",
+      "time_of_day": "evening",
+      "notes": "You watch Marlins games with the sound off."
+    },
+    {
+      "id": "drinking_coffee",
+      "kind": "Activity",
+      "name": "drinking coffee",
+      "time_of_day": "morning",
+      "notes": "You like your coffee unreasonably strong."
+    },
+    {
+      "id": "sitting_at_window",
+      "kind": "Activity",
+      "name": "sitting at the window",
+      "time_of_day": "daytime",
+      "notes": "You prefer the window seat, looking out at the jacaranda."
+    },
+    {
+      "id": "avoiding_recliner",
+      "kind": "Activity",
+      "name": "avoiding the recliner",
+      "time_of_day": "daytime",
+      "notes": "You stay off the living-room recliner because it hurts your lower back."
+    },
+    {
+      "id": "rosie_napping",
+      "kind": "Activity",
+      "name": "Rosie napping",
+      "time_of_day": "daytime",
+      "notes": "Rosie sleeps under your chair."
+    },
+    {
+      "id": "being_addressed",
+      "kind": "Activity",
+      "name": "being spoken with",
+      "time_of_day": "daytime",
+      "notes": "You are stubborn about not being spoken over."
+    },
+    {
+      "id": "muting_the_game",
+      "kind": "Activity",
+      "name": "muting the game",
+      "time_of_day": "evening",
+      "notes": "You turn the sound off for Marlins games."
+    },
+    {
+      "id": "looking_at_jacaranda",
+      "kind": "Activity",
+      "name": "looking at the jacaranda",
+      "time_of_day": "daytime",
+      "notes": "From the window seat you look at the jacaranda tree."
+    },
+    {
+      "id": "family_sunday",
+      "kind": "Activity",
+      "name": "Sunday with family",
+      "time_of_day": "afternoon",
+      "notes": "Sunday afternoons bring Sofia, and Mateo is the grandson in that family."
+    },
+    {
+      "id": "weekday_routine",
+      "kind": "Activity",
+      "name": "weekday morning routine",
+      "time_of_day": "morning",
+      "notes": "Weekday mornings are Priya's time, not Sunday."
+    },
+    {
+      "id": "lesson_planning",
+      "kind": "Activity",
+      "name": "lesson planning",
+      "time_of_day": "daytime",
+      "notes": "Lesson planning was part of being a high-school music teacher."
+    },
+    {
+      "id": "trumpet_practice",
+      "kind": "Activity",
+      "name": "trumpet practice",
+      "time_of_day": "daytime",
+      "notes": "You used to practice the trumpet you played in Los Vientos."
+    },
+    {
+      "id": "greeting_sofia",
+      "kind": "Activity",
+      "name": "greeting Sofia",
+      "time_of_day": "afternoon",
+      "notes": "When Sofia arrives on Sunday you greet her as \"mija\"."
+    },
+    {
+      "id": "time_with_mateo",
+      "kind": "Activity",
+      "name": "time with Mateo",
+      "time_of_day": "afternoon",
+      "notes": "Mateo is four, your grandson, and part of the family around Sofia."
+    },
+    {
+      "id": "elena_checkin",
+      "kind": "Activity",
+      "name": "checking in with Elena",
+      "time_of_day": "daytime",
+      "notes": "Elena is who you rely on to manage care."
+    },
+    {
+      "id": "priya_arrival",
+      "kind": "Activity",
+      "name": "Priya arriving",
+      "time_of_day": "morning",
+      "notes": "Priya arrives on weekday mornings."
+    },
+    {
+      "id": "back_care",
+      "kind": "Activity",
+      "name": "protecting your back",
+      "time_of_day": "daytime",
+      "notes": "Protecting your lower back means the recliner stays empty."
+    },
+    {
+      "id": "strong_coffee_routine",
+      "kind": "Activity",
+      "name": "making strong coffee",
+      "time_of_day": "morning",
+      "notes": "Your coffee routine is unreasonably strong, on purpose."
+    },
+    {
+      "id": "sound_off_viewing",
+      "kind": "Activity",
+      "name": "watching with the sound off",
+      "time_of_day": "evening",
+      "notes": "Sound off is how a Marlins game plays in your house."
+    },
+    {
+      "id": "directing_band",
+      "kind": "Activity",
+      "name": "directing the school band",
+      "time_of_day": "daytime",
+      "notes": "Directing the school band was your job as a music teacher."
+    },
+    {
+      "id": "speech",
+      "kind": "Need",
+      "name": "reliable speech",
+      "urgency": "high",
+      "notes": "You have no reliable speech. That is why this device speaks for you."
+    },
+    {
+      "id": "hand_use",
+      "kind": "Need",
+      "name": "reliable hand movement",
+      "urgency": "high",
+      "notes": "You have no reliable hand movement since ALS."
+    },
+    {
+      "id": "back_comfort",
+      "kind": "Need",
+      "name": "back comfort",
+      "urgency": "high",
+      "notes": "Your lower back needs a seat that is not the recliner."
+    },
+    {
+      "id": "not_spoken_over",
+      "kind": "Need",
+      "name": "not being spoken over",
+      "urgency": "high",
+      "notes": "You are stubborn about not being spoken over."
+    },
+    {
+      "id": "strong_coffee_need",
+      "kind": "Need",
+      "name": "strong coffee",
+      "urgency": "medium",
+      "notes": "You need your coffee unreasonably strong."
+    },
+    {
+      "id": "nursing",
+      "kind": "Need",
+      "name": "weekday nursing",
+      "urgency": "high",
+      "notes": "You need Priya on weekday mornings."
+    },
+    {
+      "id": "care_coordination",
+      "kind": "Need",
+      "name": "care coordination",
+      "urgency": "high",
+      "notes": "You need Elena managing your care."
+    },
+    {
+      "id": "dignity",
+      "kind": "Need",
+      "name": "being treated as an adult",
+      "urgency": "high",
+      "notes": "You are an adult with opinions. You do not want to be talked past."
+    },
+    {
+      "id": "rosie_company",
+      "kind": "Need",
+      "name": "Rosie's company",
+      "urgency": "medium",
+      "notes": "You need Rosie nearby. She sleeps under your chair."
+    },
+    {
+      "id": "jacaranda_view",
+      "kind": "Need",
+      "name": "the jacaranda view",
+      "urgency": "low",
+      "notes": "You need the window seat so you can see the jacaranda."
+    },
+    {
+      "id": "family_contact",
+      "kind": "Need",
+      "name": "Sunday family time",
+      "urgency": "medium",
+      "notes": "You need Sofia's Sunday afternoon visits."
+    },
+    {
+      "id": "seating",
+      "kind": "Need",
+      "name": "a tolerable seat",
+      "urgency": "high",
+      "notes": "You need the window seat instead of the recliner."
+    },
+    {
+      "id": "communication",
+      "kind": "Need",
+      "name": "a way to answer",
+      "urgency": "high",
+      "notes": "Without reliable speech you still need to answer the person in the room."
+    },
+    {
+      "id": "morning_support",
+      "kind": "Need",
+      "name": "morning support",
+      "urgency": "high",
+      "notes": "Weekday mornings you need Priya."
+    },
+    {
+      "id": "sunday_company",
+      "kind": "Need",
+      "name": "Sunday company",
+      "urgency": "medium",
+      "notes": "Sunday afternoons you need Sofia, who you call mija."
+    },
+    {
+      "id": "quiet_games",
+      "kind": "Need",
+      "name": "quiet Marlins games",
+      "urgency": "low",
+      "notes": "You need Marlins games with the sound off."
+    },
+    {
+      "id": "mem_name",
+      "kind": "Memory",
+      "text": "You are Marcus Alvarez.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_age",
+      "kind": "Memory",
+      "text": "You are 54.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_miami",
+      "kind": "Memory",
+      "text": "You live in Miami.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_teacher",
+      "kind": "Memory",
+      "text": "You are a former high-school music teacher.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_taught_miami",
+      "kind": "Memory",
+      "text": "The high school where you taught music is in Miami.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_als_dx",
+      "kind": "Memory",
+      "text": "You were diagnosed with ALS three years ago.",
+      "occurred_on": "three years ago",
+      "source": "bio"
+    },
+    {
+      "id": "mem_als_speech",
+      "kind": "Memory",
+      "text": "ALS left you with no reliable speech.",
+      "occurred_on": "three years ago",
+      "source": "bio"
+    },
+    {
+      "id": "mem_als_hands",
+      "kind": "Memory",
+      "text": "ALS left you with no reliable hand movement.",
+      "occurred_on": "three years ago",
+      "source": "bio"
+    },
+    {
+      "id": "mem_cannot_speak",
+      "kind": "Memory",
+      "text": "You cannot speak reliably now.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_cannot_hands",
+      "kind": "Memory",
+      "text": "You cannot use your hands reliably now.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_sofia_daughter",
+      "kind": "Memory",
+      "text": "Sofia is your daughter.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_mija",
+      "kind": "Memory",
+      "text": "You call Sofia \"mija\".",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_sunday",
+      "kind": "Memory",
+      "text": "Sofia visits on Sunday afternoons.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_sunday_rhythm",
+      "kind": "Memory",
+      "text": "Sunday afternoon is Sofia's time, not Priya's.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_mateo",
+      "kind": "Memory",
+      "text": "Mateo is your grandson.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_mateo_age",
+      "kind": "Memory",
+      "text": "Mateo is four.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_mateo_son",
+      "kind": "Memory",
+      "text": "Mateo is Sofia's son.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_elena_wife",
+      "kind": "Memory",
+      "text": "Elena is your wife.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_elena_care",
+      "kind": "Memory",
+      "text": "Elena manages your care.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_priya_nurse",
+      "kind": "Memory",
+      "text": "Priya is your home nurse.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_priya_mornings",
+      "kind": "Memory",
+      "text": "Priya comes on weekday mornings.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_priya_not_sunday",
+      "kind": "Memory",
+      "text": "Priya does not come for the Sunday visits. Those are Sofia's.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_rosie_dog",
+      "kind": "Memory",
+      "text": "Rosie is your dog.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_rosie_beagle",
+      "kind": "Memory",
+      "text": "Rosie is a beagle.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_rosie_age",
+      "kind": "Memory",
+      "text": "Rosie is nine years old.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_rosie_chair",
+      "kind": "Memory",
+      "text": "Rosie sleeps under your chair.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_rosie_not_recliner",
+      "kind": "Memory",
+      "text": "Rosie's spot is under your chair, not on the recliner you hate.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_hate_recliner",
+      "kind": "Memory",
+      "text": "You hate the living-room recliner.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_back_hurts",
+      "kind": "Memory",
+      "text": "The recliner hurts your lower back.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_avoid_recliner",
+      "kind": "Memory",
+      "text": "You avoid the recliner because of your lower back.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_prefer_window",
+      "kind": "Memory",
+      "text": "You prefer the window seat.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_see_tree",
+      "kind": "Memory",
+      "text": "From the window seat you can see the jacaranda tree.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_tree_yard",
+      "kind": "Memory",
+      "text": "The jacaranda stands outside, in view of the window seat.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_blossoms",
+      "kind": "Memory",
+      "text": "You watch the jacaranda blossoms from the window seat.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_trumpet",
+      "kind": "Memory",
+      "text": "You used to play trumpet.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_band",
+      "kind": "Memory",
+      "text": "You played trumpet in a salsa band called Los Vientos.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_salsa",
+      "kind": "Memory",
+      "text": "Los Vientos played salsa.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_hands_trumpet",
+      "kind": "Memory",
+      "text": "Reliable hand movement is gone, so the trumpet valves are part of the old life.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_stubborn",
+      "kind": "Memory",
+      "text": "You are stubborn about not being spoken over.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_dignity",
+      "kind": "Memory",
+      "text": "You expect to be spoken with, not spoken over.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_coffee",
+      "kind": "Memory",
+      "text": "You like your coffee unreasonably strong.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_coffee_on_purpose",
+      "kind": "Memory",
+      "text": "Unreasonably strong is how you want the coffee, not a mistake.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_marlins",
+      "kind": "Memory",
+      "text": "You watch Marlins games.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_sound_off",
+      "kind": "Memory",
+      "text": "You watch Marlins games with the sound off.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_tv",
+      "kind": "Memory",
+      "text": "The Marlins games play on the television.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_mute",
+      "kind": "Memory",
+      "text": "The sound stays off for the game.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_former",
+      "kind": "Memory",
+      "text": "Teaching music is former work. ALS is why it is former.",
+      "occurred_on": "three years ago",
+      "source": "bio"
+    },
+    {
+      "id": "mem_classroom",
+      "kind": "Memory",
+      "text": "Your classroom was a music classroom in a Miami high school.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_band_room",
+      "kind": "Memory",
+      "text": "The band room was where the school band rehearsed for you.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_school_band",
+      "kind": "Memory",
+      "text": "You directed the high-school band.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_sheet",
+      "kind": "Memory",
+      "text": "Sheet music was the material of the teaching job.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_stand",
+      "kind": "Memory",
+      "text": "The music stand served both the classroom and the trumpet.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_metronome",
+      "kind": "Memory",
+      "text": "The metronome lived in the classroom you taught in.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_plans",
+      "kind": "Memory",
+      "text": "Lesson plans were part of the music-teaching job.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_folder",
+      "kind": "Memory",
+      "text": "The music folder held charts from school and from Los Vientos.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_case",
+      "kind": "Memory",
+      "text": "The trumpet case belongs to the Los Vientos years.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_mouthpiece",
+      "kind": "Memory",
+      "text": "The mouthpiece goes with the trumpet from Los Vientos.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_concerts",
+      "kind": "Memory",
+      "text": "Concert programs were how the high-school music job met an audience.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_kitchen",
+      "kind": "Memory",
+      "text": "Strong coffee is a home routine, made in the kitchen.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_mug",
+      "kind": "Memory",
+      "text": "The coffee reaches you in a mug, and it had better be strong.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_pot",
+      "kind": "Memory",
+      "text": "The pot is for the unreasonably strong coffee.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_home",
+      "kind": "Memory",
+      "text": "Home is where Elena, Priya, Sofia, Mateo, and Rosie all meet your day.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_living_room",
+      "kind": "Memory",
+      "text": "The living room is where the recliner and the window seat both are.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_two_seats",
+      "kind": "Memory",
+      "text": "There are two seats that matter: the recliner you refuse, and the window seat you want.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_window_glass",
+      "kind": "Memory",
+      "text": "The jacaranda is outside the glass of the window seat.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_greeting",
+      "kind": "Memory",
+      "text": "You greet Sofia as \"mija\" when she comes on Sunday.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_family_sunday",
+      "kind": "Memory",
+      "text": "A Sunday afternoon visit is family time with Sofia.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_mateo_sunday",
+      "kind": "Memory",
+      "text": "Mateo belongs to the family Sofia brings into the house.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_elena_decisions",
+      "kind": "Memory",
+      "text": "Care decisions sit with Elena.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_elena_not_nurse",
+      "kind": "Memory",
+      "text": "Elena manages care. Priya is the nurse. They are not the same job.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_priya_home",
+      "kind": "Memory",
+      "text": "Priya's nursing happens at home, on weekday mornings.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_weekday",
+      "kind": "Memory",
+      "text": "Weekday mornings have a shape: Priya arrives.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_back_care",
+      "kind": "Memory",
+      "text": "Protecting your lower back is a daily constraint, not a mood.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_seating_need",
+      "kind": "Memory",
+      "text": "The seat you can tolerate is the window seat.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_view_need",
+      "kind": "Memory",
+      "text": "The jacaranda view is why the window seat wins.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_rosie_company",
+      "kind": "Memory",
+      "text": "Rosie staying under the chair is company, not a trick.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_nine",
+      "kind": "Memory",
+      "text": "Nine years is how long Rosie has been your beagle.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_beagle",
+      "kind": "Memory",
+      "text": "Beagle is the breed. Rosie is the dog.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_speech_need",
+      "kind": "Memory",
+      "text": "A way to answer matters because speech is no longer reliable.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_device_reason",
+      "kind": "Memory",
+      "text": "The reason a speech device has to finish your sentences is ALS, three years in.",
+      "occurred_on": "three years ago",
+      "source": "bio"
+    },
+    {
+      "id": "mem_not_patient_voice",
+      "kind": "Memory",
+      "text": "You will not be spoken over. That stubbornness is the point.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_coffee_need",
+      "kind": "Memory",
+      "text": "Strong coffee is a real preference, small and non-negotiable.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_morning_coffee",
+      "kind": "Memory",
+      "text": "Coffee belongs to the morning, the same part of the day as Priya on weekdays.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_game_quiet",
+      "kind": "Memory",
+      "text": "A Marlins game in this house is quiet on purpose.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_broadcast",
+      "kind": "Memory",
+      "text": "The broadcast is the Marlins, and the sound is off.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_remote",
+      "kind": "Memory",
+      "text": "Muting is a remote, not a request for silence from the room.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_practice",
+      "kind": "Memory",
+      "text": "Trumpet practice was the private side of playing in Los Vientos.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_gigs",
+      "kind": "Memory",
+      "text": "Los Vientos gigs were salsa, with your trumpet in the band.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_directing",
+      "kind": "Memory",
+      "text": "Directing the school band and playing in Los Vientos were both trumpet-and-music lives.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_stopped_teaching",
+      "kind": "Memory",
+      "text": "You stopped teaching because ALS took speech and hands, not because you lost the subject.",
+      "occurred_on": "three years ago",
+      "source": "bio"
+    },
+    {
+      "id": "mem_three_years",
+      "kind": "Memory",
+      "text": "Three years is how long ALS has been the fact in the room.",
+      "occurred_on": "three years ago",
+      "source": "bio"
+    },
+    {
+      "id": "mem_54",
+      "kind": "Memory",
+      "text": "Fifty-four is your age. The teaching years sit behind that.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_miami_home",
+      "kind": "Memory",
+      "text": "Miami is not a visit. It is where home is.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_yard_tree",
+      "kind": "Memory",
+      "text": "The yard's job, for you, is holding the jacaranda in sight.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_chair_vs_recliner",
+      "kind": "Memory",
+      "text": "Your chair, the one Rosie uses, is a different object from the recliner.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_sofia_mija_only",
+      "kind": "Memory",
+      "text": "\"Mija\" is for Sofia. It is not what you call Elena or Priya.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_elena_wife_role",
+      "kind": "Memory",
+      "text": "Wife and care manager are both Elena.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_priya_title",
+      "kind": "Memory",
+      "text": "Home nurse is Priya's role, weekday mornings.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_mateo_four",
+      "kind": "Memory",
+      "text": "Four is young. Mateo is four.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_family_need",
+      "kind": "Memory",
+      "text": "Sunday family time is a need, and Sofia is how it arrives.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_sunday_company",
+      "kind": "Memory",
+      "text": "Sunday company means Sofia.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_morning_support",
+      "kind": "Memory",
+      "text": "Morning support on weekdays means Priya.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_nursing_need",
+      "kind": "Memory",
+      "text": "Weekday nursing is a need, and it has Priya's name on it.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_coordination",
+      "kind": "Memory",
+      "text": "Care coordination is Elena's work, every day she manages it.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_checkin",
+      "kind": "Memory",
+      "text": "Checking in with Elena is how care stays managed.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_arrival",
+      "kind": "Memory",
+      "text": "Priya arriving is the start of a weekday morning.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_lessons",
+      "kind": "Memory",
+      "text": "Classroom lessons were the daily form of the teaching job.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_rehearsal",
+      "kind": "Memory",
+      "text": "Band rehearsal was you, the school band, and the band room.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_planning",
+      "kind": "Memory",
+      "text": "Lesson planning happened around the classroom, before ALS.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_window_activity",
+      "kind": "Memory",
+      "text": "Sitting at the window is the seat you actually choose.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_looking",
+      "kind": "Memory",
+      "text": "Looking at the jacaranda is what the window seat is for.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_nap",
+      "kind": "Memory",
+      "text": "Rosie napping under the chair is an ordinary part of the room.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_addressed",
+      "kind": "Memory",
+      "text": "Being spoken with, not over, is how a conversation with you has to work.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_mute_activity",
+      "kind": "Memory",
+      "text": "Muting the game is part of watching the Marlins, not a rejection of the game.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_sound_activity",
+      "kind": "Memory",
+      "text": "Watching with the sound off is the whole habit, not a one-time choice.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_strong_routine",
+      "kind": "Memory",
+      "text": "Making the coffee strong is the routine. Weak coffee is the failure mode.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_drinking",
+      "kind": "Memory",
+      "text": "Drinking the coffee only counts if it is unreasonably strong.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_salsa_thing",
+      "kind": "Memory",
+      "text": "Salsa music is the sound Los Vientos was built on.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_valves",
+      "kind": "Memory",
+      "text": "Trumpet valves need the hand movement ALS took.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_program",
+      "kind": "Memory",
+      "text": "A concert program is a relic of the high-school job.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_folder_school",
+      "kind": "Memory",
+      "text": "The music folder tied the school band to the charts.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_stand_class",
+      "kind": "Memory",
+      "text": "The music stand stood in the classroom.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_metronome_lessons",
+      "kind": "Memory",
+      "text": "The metronome kept classroom lessons honest.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_sheet_band",
+      "kind": "Memory",
+      "text": "Sheet music fed both the school band and your own trumpet.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_glass_seat",
+      "kind": "Memory",
+      "text": "Window glass and window seat are the same view: jacaranda.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_blossoms_tree",
+      "kind": "Memory",
+      "text": "The blossoms are the jacaranda doing the thing you watch.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_yard_home",
+      "kind": "Memory",
+      "text": "The yard is part of home, and the tree is why you face it.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_living_home",
+      "kind": "Memory",
+      "text": "The living room is the room at home where the seat choice matters.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_kitchen_home",
+      "kind": "Memory",
+      "text": "The kitchen is at home, and it exists here because the coffee does.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_school_miami",
+      "kind": "Memory",
+      "text": "The high school, the classroom, and the band room are all the Miami teaching life.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_user_home",
+      "kind": "Memory",
+      "text": "You are at home in Miami, not in a classroom, now.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_user_window",
+      "kind": "Memory",
+      "text": "When you choose a seat, you are at the window.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_user_coffee",
+      "kind": "Memory",
+      "text": "Your morning includes coffee that would be too strong for most people.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_user_game",
+      "kind": "Memory",
+      "text": "Your evening can be a silent Marlins game.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_user_sunday",
+      "kind": "Memory",
+      "text": "Your Sunday afternoon is built around Sofia.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_user_weekday",
+      "kind": "Memory",
+      "text": "Your weekday morning is built around Priya.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_user_wife",
+      "kind": "Memory",
+      "text": "Your wife Elena is the person who manages care.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_user_dog",
+      "kind": "Memory",
+      "text": "Your dog is Rosie, nine, a beagle, under the chair.",
+      "occurred_on": "",
+      "source": "bio"
+    },
+    {
+      "id": "mem_user_band",
+      "kind": "Memory",
+      "text": "Your band was Los Vientos, and your instrument was trumpet.",
+      "occurred_on": "",
+      "source": "bio"
+    }
+  ],
+  "edges": [
+    {
+      "kind": "KNOWS",
+      "source": "user",
+      "target": "sofia"
+    },
+    {
+      "kind": "KNOWS",
+      "source": "user",
+      "target": "mateo"
+    },
+    {
+      "kind": "KNOWS",
+      "source": "user",
+      "target": "elena"
+    },
+    {
+      "kind": "KNOWS",
+      "source": "user",
+      "target": "priya"
+    },
+    {
+      "kind": "KNOWS",
+      "source": "sofia",
+      "target": "mateo"
+    },
+    {
+      "kind": "KNOWS",
+      "source": "elena",
+      "target": "sofia"
+    },
+    {
+      "kind": "KNOWS",
+      "source": "elena",
+      "target": "priya"
+    },
+    {
+      "kind": "LIKES",
+      "source": "user",
+      "target": "sofia"
+    },
+    {
+      "kind": "LIKES",
+      "source": "user",
+      "target": "mateo"
+    },
+    {
+      "kind": "LIKES",
+      "source": "user",
+      "target": "rosie",
+      "strength": 0.9
+    },
+    {
+      "kind": "LIKES",
+      "source": "user",
+      "target": "coffee",
+      "strength": 0.95
+    },
+    {
+      "kind": "LIKES",
+      "source": "user",
+      "target": "trumpet",
+      "strength": 0.8
+    },
+    {
+      "kind": "LIKES",
+      "source": "user",
+      "target": "window_seat",
+      "strength": 0.9
+    },
+    {
+      "kind": "LIKES",
+      "source": "user",
+      "target": "jacaranda",
+      "strength": 0.7
+    },
+    {
+      "kind": "LIKES",
+      "source": "user",
+      "target": "marlins",
+      "strength": 0.6
+    },
+    {
+      "kind": "LIKES",
+      "source": "user",
+      "target": "watching_marlins",
+      "strength": 0.6
+    },
+    {
+      "kind": "LIKES",
+      "source": "user",
+      "target": "playing_trumpet",
+      "strength": 0.8
+    },
+    {
+      "kind": "LIKES",
+      "source": "user",
+      "target": "drinking_coffee",
+      "strength": 0.9
+    },
+    {
+      "kind": "LIKES",
+      "source": "user",
+      "target": "sitting_at_window",
+      "strength": 0.9
+    },
+    {
+      "kind": "LIKES",
+      "source": "sofia",
+      "target": "mateo",
+      "strength": 0.9
+    },
+    {
+      "kind": "DISLIKES",
+      "source": "user",
+      "target": "recliner",
+      "strength": 0.95
+    },
+    {
+      "kind": "NEEDS",
+      "source": "user",
+      "target": "speech"
+    },
+    {
+      "kind": "NEEDS",
+      "source": "user",
+      "target": "hand_use"
+    },
+    {
+      "kind": "NEEDS",
+      "source": "user",
+      "target": "back_comfort"
+    },
+    {
+      "kind": "NEEDS",
+      "source": "user",
+      "target": "not_spoken_over"
+    },
+    {
+      "kind": "NEEDS",
+      "source": "user",
+      "target": "strong_coffee_need"
+    },
+    {
+      "kind": "NEEDS",
+      "source": "user",
+      "target": "nursing"
+    },
+    {
+      "kind": "NEEDS",
+      "source": "user",
+      "target": "care_coordination"
+    },
+    {
+      "kind": "NEEDS",
+      "source": "user",
+      "target": "dignity"
+    },
+    {
+      "kind": "NEEDS",
+      "source": "user",
+      "target": "seating"
+    },
+    {
+      "kind": "NEEDS",
+      "source": "user",
+      "target": "communication"
+    },
+    {
+      "kind": "NEEDS",
+      "source": "user",
+      "target": "coffee"
+    },
+    {
+      "kind": "NEEDS",
+      "source": "user",
+      "target": "chair"
+    },
+    {
+      "kind": "DOES",
+      "source": "user",
+      "target": "teaching_music"
+    },
+    {
+      "kind": "DOES",
+      "source": "user",
+      "target": "sunday_visit"
+    },
+    {
+      "kind": "DOES",
+      "source": "user",
+      "target": "drinking_coffee"
+    },
+    {
+      "kind": "DOES",
+      "source": "user",
+      "target": "sitting_at_window"
+    },
+    {
+      "kind": "DOES",
+      "source": "user",
+      "target": "watching_marlins"
+    },
+    {
+      "kind": "DOES",
+      "source": "user",
+      "target": "playing_trumpet"
+    },
+    {
+      "kind": "DOES",
+      "source": "user",
+      "target": "avoiding_recliner"
+    },
+    {
+      "kind": "DOES",
+      "source": "user",
+      "target": "being_addressed"
+    },
+    {
+      "kind": "DOES",
+      "source": "user",
+      "target": "strong_coffee_routine"
+    },
+    {
+      "kind": "DOES",
+      "source": "sofia",
+      "target": "sunday_visit"
+    },
+    {
+      "kind": "DOES",
+      "source": "priya",
+      "target": "morning_nursing"
+    },
+    {
+      "kind": "DOES",
+      "source": "elena",
+      "target": "care_management"
+    },
+    {
+      "kind": "DOES",
+      "source": "mateo",
+      "target": "family_sunday"
+    },
+    {
+      "kind": "LOCATED_AT",
+      "source": "recliner",
+      "target": "living_room"
+    },
+    {
+      "kind": "LOCATED_AT",
+      "source": "chair",
+      "target": "living_room"
+    },
+    {
+      "kind": "LOCATED_AT",
+      "source": "television",
+      "target": "living_room"
+    },
+    {
+      "kind": "LOCATED_AT",
+      "source": "jacaranda",
+      "target": "yard"
+    },
+    {
+      "kind": "LOCATED_AT",
+      "source": "jacaranda_blossoms",
+      "target": "yard"
+    },
+    {
+      "kind": "LOCATED_AT",
+      "source": "coffee_pot",
+      "target": "kitchen"
+    },
+    {
+      "kind": "LOCATED_AT",
+      "source": "user",
+      "target": "home"
+    },
+    {
+      "kind": "LOCATED_AT",
+      "source": "user",
+      "target": "miami"
+    },
+    {
+      "kind": "LOCATED_AT",
+      "source": "rosie",
+      "target": "home"
+    },
+    {
+      "kind": "LOCATED_AT",
+      "source": "teaching_music",
+      "target": "high_school"
+    },
+    {
+      "kind": "LOCATED_AT",
+      "source": "band_rehearsal",
+      "target": "band_room"
+    },
+    {
+      "kind": "LOCATED_AT",
+      "source": "classroom_lessons",
+      "target": "classroom"
+    },
+    {
+      "kind": "LOCATED_AT",
+      "source": "morning_nursing",
+      "target": "home"
+    },
+    {
+      "kind": "LOCATED_AT",
+      "source": "sunday_visit",
+      "target": "home"
+    },
+    {
+      "kind": "LOCATED_AT",
+      "source": "sitting_at_window",
+      "target": "window_seat"
+    },
+    {
+      "kind": "LOCATED_AT",
+      "source": "looking_at_jacaranda",
+      "target": "window_seat"
+    },
+    {
+      "kind": "LOCATED_AT",
+      "source": "drinking_coffee",
+      "target": "kitchen"
+    },
+    {
+      "kind": "LOCATED_AT",
+      "source": "playing_trumpet",
+      "target": "band_room"
+    },
+    {
+      "kind": "RELATES_TO",
+      "source": "trumpet",
+      "target": "los_vientos"
+    },
+    {
+      "kind": "RELATES_TO",
+      "source": "trumpet",
+      "target": "mouthpiece"
+    },
+    {
+      "kind": "RELATES_TO",
+      "source": "trumpet",
+      "target": "trumpet_case"
+    },
+    {
+      "kind": "RELATES_TO",
+      "source": "trumpet",
+      "target": "trumpet_valves"
+    },
+    {
+      "kind": "RELATES_TO",
+      "source": "rosie",
+      "target": "chair"
+    },
+    {
+      "kind": "RELATES_TO",
+      "source": "coffee",
+      "target": "coffee_mug"
+    },
+    {
+      "kind": "RELATES_TO",
+      "source": "coffee",
+      "target": "coffee_pot"
+    },
+    {
+      "kind": "RELATES_TO",
+      "source": "television",
+      "target": "remote"
+    },
+    {
+      "kind": "RELATES_TO",
+      "source": "television",
+      "target": "marlins"
+    },
+    {
+      "kind": "RELATES_TO",
+      "source": "marlins",
+      "target": "broadcast"
+    },
+    {
+      "kind": "RELATES_TO",
+      "source": "jacaranda",
+      "target": "jacaranda_blossoms"
+    },
+    {
+      "kind": "RELATES_TO",
+      "source": "sheet_music",
+      "target": "music_stand"
+    },
+    {
+      "kind": "RELATES_TO",
+      "source": "sheet_music",
+      "target": "school_band"
+    },
+    {
+      "kind": "RELATES_TO",
+      "source": "playing_trumpet",
+      "target": "salsa_gigs"
+    },
+    {
+      "kind": "RELATES_TO",
+      "source": "watching_marlins",
+      "target": "sound_off_viewing"
+    },
+    {
+      "kind": "RELATES_TO",
+      "source": "teaching_music",
+      "target": "directing_band"
+    },
+    {
+      "kind": "RELATES_TO",
+      "source": "sunday_visit",
+      "target": "family_sunday"
+    },
+    {
+      "kind": "RELATES_TO",
+      "source": "morning_nursing",
+      "target": "weekday_routine"
+    },
+    {
+      "kind": "RELATES_TO",
+      "source": "drinking_coffee",
+      "target": "strong_coffee_routine"
+    },
+    {
+      "kind": "RELATES_TO",
+      "source": "trumpet",
+      "target": "playing_trumpet"
+    },
+    {
+      "kind": "RELATES_TO",
+      "source": "coffee",
+      "target": "drinking_coffee"
+    },
+    {
+      "kind": "RELATES_TO",
+      "source": "speech",
+      "target": "als"
+    },
+    {
+      "kind": "RELATES_TO",
+      "source": "hand_use",
+      "target": "trumpet_valves"
+    },
+    {
+      "kind": "RELATES_TO",
+      "source": "back_comfort",
+      "target": "recliner"
+    },
+    {
+      "kind": "RELATES_TO",
+      "source": "strong_coffee_need",
+      "target": "coffee"
+    },
+    {
+      "kind": "RELATES_TO",
+      "source": "seating",
+      "target": "chair"
+    },
+    {
+      "kind": "RELATES_TO",
+      "source": "quiet_games",
+      "target": "television"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_name",
+      "target": "user"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_age",
+      "target": "user"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_miami",
+      "target": "miami"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_miami",
+      "target": "home"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_teacher",
+      "target": "teaching_music"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_teacher",
+      "target": "high_school"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_taught_miami",
+      "target": "high_school"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_taught_miami",
+      "target": "miami"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_als_dx",
+      "target": "als"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_als_speech",
+      "target": "als"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_als_hands",
+      "target": "als"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_cannot_hands",
+      "target": "trumpet_valves"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_sofia_daughter",
+      "target": "sofia"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_mija",
+      "target": "sofia"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_sunday",
+      "target": "sofia"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_sunday",
+      "target": "sunday_visit"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_sunday_rhythm",
+      "target": "sunday_visit"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_sunday_rhythm",
+      "target": "priya"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_mateo",
+      "target": "mateo"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_mateo_age",
+      "target": "mateo"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_mateo_son",
+      "target": "mateo"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_mateo_son",
+      "target": "sofia"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_elena_wife",
+      "target": "elena"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_elena_care",
+      "target": "elena"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_elena_care",
+      "target": "care_management"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_priya_nurse",
+      "target": "priya"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_priya_mornings",
+      "target": "priya"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_priya_mornings",
+      "target": "morning_nursing"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_priya_not_sunday",
+      "target": "priya"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_priya_not_sunday",
+      "target": "sofia"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_rosie_dog",
+      "target": "rosie"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_rosie_beagle",
+      "target": "rosie"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_rosie_age",
+      "target": "rosie"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_rosie_chair",
+      "target": "rosie"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_rosie_chair",
+      "target": "chair"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_rosie_not_recliner",
+      "target": "rosie"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_rosie_not_recliner",
+      "target": "recliner"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_rosie_not_recliner",
+      "target": "chair"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_hate_recliner",
+      "target": "recliner"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_hate_recliner",
+      "target": "living_room"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_back_hurts",
+      "target": "recliner"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_back_hurts",
+      "target": "lower_back"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_avoid_recliner",
+      "target": "avoiding_recliner"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_avoid_recliner",
+      "target": "recliner"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_prefer_window",
+      "target": "window_seat"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_see_tree",
+      "target": "window_seat"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_see_tree",
+      "target": "jacaranda"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_tree_yard",
+      "target": "jacaranda"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_tree_yard",
+      "target": "yard"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_tree_yard",
+      "target": "window_seat"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_blossoms",
+      "target": "jacaranda_blossoms"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_blossoms",
+      "target": "window_seat"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_trumpet",
+      "target": "trumpet"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_trumpet",
+      "target": "playing_trumpet"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_band",
+      "target": "trumpet"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_band",
+      "target": "los_vientos"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_salsa",
+      "target": "los_vientos"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_salsa",
+      "target": "salsa_music"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_hands_trumpet",
+      "target": "trumpet_valves"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_dignity",
+      "target": "being_addressed"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_coffee",
+      "target": "coffee"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_coffee_on_purpose",
+      "target": "coffee"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_coffee_on_purpose",
+      "target": "strong_coffee_routine"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_marlins",
+      "target": "marlins"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_marlins",
+      "target": "watching_marlins"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_sound_off",
+      "target": "marlins"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_sound_off",
+      "target": "sound_off_viewing"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_tv",
+      "target": "television"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_tv",
+      "target": "marlins"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_mute",
+      "target": "remote"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_mute",
+      "target": "muting_the_game"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_former",
+      "target": "teaching_music"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_former",
+      "target": "als"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_classroom",
+      "target": "classroom"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_classroom",
+      "target": "high_school"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_band_room",
+      "target": "band_room"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_band_room",
+      "target": "school_band"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_school_band",
+      "target": "school_band"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_school_band",
+      "target": "directing_band"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_sheet",
+      "target": "sheet_music"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_sheet",
+      "target": "teaching_music"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_stand",
+      "target": "music_stand"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_stand",
+      "target": "trumpet"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_metronome",
+      "target": "metronome"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_metronome",
+      "target": "classroom"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_plans",
+      "target": "lesson_plans"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_plans",
+      "target": "lesson_planning"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_folder",
+      "target": "music_folder"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_folder",
+      "target": "los_vientos"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_case",
+      "target": "trumpet_case"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_case",
+      "target": "los_vientos"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_mouthpiece",
+      "target": "mouthpiece"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_mouthpiece",
+      "target": "trumpet"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_concerts",
+      "target": "concert_program"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_concerts",
+      "target": "high_school"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_kitchen",
+      "target": "kitchen"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_kitchen",
+      "target": "coffee"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_mug",
+      "target": "coffee_mug"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_mug",
+      "target": "coffee"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_pot",
+      "target": "coffee_pot"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_pot",
+      "target": "coffee"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_home",
+      "target": "home"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_living_room",
+      "target": "living_room"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_living_room",
+      "target": "recliner"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_living_room",
+      "target": "window_seat"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_two_seats",
+      "target": "recliner"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_two_seats",
+      "target": "window_seat"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_window_glass",
+      "target": "window_glass"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_window_glass",
+      "target": "jacaranda"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_greeting",
+      "target": "greeting_sofia"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_greeting",
+      "target": "sofia"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_family_sunday",
+      "target": "family_sunday"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_family_sunday",
+      "target": "sofia"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_mateo_sunday",
+      "target": "time_with_mateo"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_mateo_sunday",
+      "target": "mateo"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_mateo_sunday",
+      "target": "sofia"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_elena_decisions",
+      "target": "elena"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_elena_not_nurse",
+      "target": "elena"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_elena_not_nurse",
+      "target": "priya"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_priya_home",
+      "target": "priya"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_priya_home",
+      "target": "home"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_priya_home",
+      "target": "morning_nursing"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_weekday",
+      "target": "weekday_routine"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_weekday",
+      "target": "priya_arrival"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_back_care",
+      "target": "back_care"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_back_care",
+      "target": "lower_back"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_seating_need",
+      "target": "window_seat"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_view_need",
+      "target": "jacaranda"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_rosie_company",
+      "target": "rosie"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_nine",
+      "target": "rosie"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_beagle",
+      "target": "rosie"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_device_reason",
+      "target": "als"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_coffee_need",
+      "target": "drinking_coffee"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_morning_coffee",
+      "target": "drinking_coffee"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_morning_coffee",
+      "target": "morning_nursing"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_game_quiet",
+      "target": "marlins"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_broadcast",
+      "target": "broadcast"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_broadcast",
+      "target": "sound_off_viewing"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_remote",
+      "target": "remote"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_remote",
+      "target": "television"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_practice",
+      "target": "trumpet_practice"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_practice",
+      "target": "playing_trumpet"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_gigs",
+      "target": "salsa_gigs"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_gigs",
+      "target": "los_vientos"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_directing",
+      "target": "directing_band"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_directing",
+      "target": "playing_trumpet"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_stopped_teaching",
+      "target": "teaching_music"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_stopped_teaching",
+      "target": "als"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_three_years",
+      "target": "als"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_54",
+      "target": "user"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_54",
+      "target": "teaching_music"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_miami_home",
+      "target": "miami"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_miami_home",
+      "target": "home"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_yard_tree",
+      "target": "yard"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_yard_tree",
+      "target": "jacaranda"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_chair_vs_recliner",
+      "target": "chair"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_chair_vs_recliner",
+      "target": "recliner"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_sofia_mija_only",
+      "target": "sofia"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_elena_wife_role",
+      "target": "elena"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_elena_wife_role",
+      "target": "care_management"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_priya_title",
+      "target": "priya"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_mateo_four",
+      "target": "mateo"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_mateo_four",
+      "target": "time_with_mateo"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_family_need",
+      "target": "sunday_visit"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_sunday_company",
+      "target": "sofia"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_morning_support",
+      "target": "priya"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_nursing_need",
+      "target": "priya"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_coordination",
+      "target": "elena_checkin"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_checkin",
+      "target": "elena_checkin"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_checkin",
+      "target": "elena"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_arrival",
+      "target": "priya_arrival"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_arrival",
+      "target": "weekday_routine"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_lessons",
+      "target": "classroom_lessons"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_lessons",
+      "target": "classroom"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_rehearsal",
+      "target": "band_rehearsal"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_rehearsal",
+      "target": "band_room"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_planning",
+      "target": "lesson_planning"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_planning",
+      "target": "lesson_plans"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_window_activity",
+      "target": "sitting_at_window"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_window_activity",
+      "target": "window_seat"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_looking",
+      "target": "looking_at_jacaranda"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_looking",
+      "target": "jacaranda"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_nap",
+      "target": "rosie_napping"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_nap",
+      "target": "chair"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_addressed",
+      "target": "being_addressed"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_mute_activity",
+      "target": "muting_the_game"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_mute_activity",
+      "target": "watching_marlins"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_sound_activity",
+      "target": "sound_off_viewing"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_strong_routine",
+      "target": "strong_coffee_routine"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_strong_routine",
+      "target": "coffee_pot"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_drinking",
+      "target": "drinking_coffee"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_drinking",
+      "target": "coffee"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_salsa_thing",
+      "target": "salsa_music"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_salsa_thing",
+      "target": "salsa_gigs"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_valves",
+      "target": "trumpet_valves"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_valves",
+      "target": "playing_trumpet"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_program",
+      "target": "concert_program"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_program",
+      "target": "teaching_music"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_folder_school",
+      "target": "music_folder"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_folder_school",
+      "target": "school_band"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_stand_class",
+      "target": "music_stand"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_stand_class",
+      "target": "classroom"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_metronome_lessons",
+      "target": "metronome"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_metronome_lessons",
+      "target": "classroom_lessons"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_sheet_band",
+      "target": "sheet_music"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_sheet_band",
+      "target": "school_band"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_sheet_band",
+      "target": "trumpet"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_glass_seat",
+      "target": "window_glass"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_glass_seat",
+      "target": "window_seat"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_blossoms_tree",
+      "target": "jacaranda_blossoms"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_blossoms_tree",
+      "target": "looking_at_jacaranda"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_yard_home",
+      "target": "yard"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_yard_home",
+      "target": "home"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_living_home",
+      "target": "living_room"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_living_home",
+      "target": "home"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_kitchen_home",
+      "target": "kitchen"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_kitchen_home",
+      "target": "home"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_kitchen_home",
+      "target": "coffee"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_school_miami",
+      "target": "high_school"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_school_miami",
+      "target": "classroom"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_school_miami",
+      "target": "band_room"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_user_home",
+      "target": "user"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_user_home",
+      "target": "home"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_user_home",
+      "target": "miami"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_user_window",
+      "target": "user"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_user_window",
+      "target": "sitting_at_window"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_user_coffee",
+      "target": "user"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_user_coffee",
+      "target": "coffee"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_user_game",
+      "target": "user"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_user_game",
+      "target": "watching_marlins"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_user_sunday",
+      "target": "user"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_user_sunday",
+      "target": "sunday_visit"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_user_weekday",
+      "target": "user"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_user_weekday",
+      "target": "morning_nursing"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_user_wife",
+      "target": "user"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_user_wife",
+      "target": "elena"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_user_dog",
+      "target": "user"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_user_dog",
+      "target": "rosie"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_user_band",
+      "target": "user"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_user_band",
+      "target": "los_vientos"
+    },
+    {
+      "kind": "INVOLVES",
+      "source": "mem_user_band",
+      "target": "trumpet"
+    }
+  ]
+}
