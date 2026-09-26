@@ -1,11 +1,11 @@
 """Provider ABCs (ARCHITECTURE.md section 17).
 
-Only the two provider kinds the knowledge layer needs are defined
-here: ``LLMProvider`` and ``EmbeddingProvider``. The STT/TTS ABCs and
-the network-backed LLM links (``llm_gemini.py``, ``llm_openai_compat.py``,
-``llm_do_gradient.py``) belong to Dev A's provider layer; see
-``registry.py`` for the scope note on why a minimal scaffold lives
-here instead of nothing at all.
+Every provider kind the system needs: LLM, STT, TTS, and embeddings.
+Callers never instantiate a concrete provider directly -- they go
+through backend/providers/registry.py, which builds a fallback chain
+per slot and hands back something that duck-types this same
+interface (name + the one abstract method), so a chain is a drop-in
+replacement for a single provider everywhere.
 """
 
 from __future__ import annotations
@@ -13,10 +13,35 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 
 import numpy as np
+from pydantic import BaseModel
+
+
+class Transcript(BaseModel):
+    """Result of an STTProvider.transcribe() call.
+
+    Not part of shared/schemas.py's frozen wire contract (section 6)
+    -- this never crosses a process boundary as its own message type,
+    it is an in-process return value consumed by
+    backend/app/services/speech.py, which decides whether it is real
+    speech or noise (ARCHITECTURE.md section 15.1: confidence < 0.5 or
+    fewer than two words is discarded).
+    """
+
+    text: str
+    confidence: float  # 0..1
+    language: str = "en"
 
 
 class LLMProvider(ABC):
-    """ARCHITECTURE.md section 17."""
+    """ARCHITECTURE.md section 17.
+
+    A single provider may raise on failure (timeout, HTTP error,
+    malformed response) -- that is how registry.FallbackChain and its
+    circuit breaker detect a failed link and move to the next one.
+    The chain itself never raises past its guaranteed-offline last
+    link (StaticLLMProvider); individual links are not required to
+    make that guarantee alone.
+    """
 
     name: str
 
@@ -30,7 +55,27 @@ class LLMProvider(ABC):
         max_tokens: int = 400,
         timeout: float = 6.0,
     ) -> str:
-        """Return the raw completion text. Never raises; degrade instead."""
+        """Return the raw completion text, or raise on failure."""
+
+
+class STTProvider(ABC):
+    """ARCHITECTURE.md section 17. See LLMProvider's note on raising."""
+
+    name: str
+
+    @abstractmethod
+    async def transcribe(self, pcm: bytes, sample_rate: int) -> Transcript:
+        """Batch-transcribe 16-bit mono PCM, or raise on failure."""
+
+
+class TTSProvider(ABC):
+    """ARCHITECTURE.md section 17. See LLMProvider's note on raising."""
+
+    name: str
+
+    @abstractmethod
+    async def synthesize(self, text: str, voice_id: str | None) -> bytes:
+        """Return audio bytes (mp3/wav), or raise on failure."""
 
 
 class EmbeddingProvider(ABC):
