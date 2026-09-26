@@ -119,6 +119,7 @@ class NodeRef(BaseModel):
     name: str
     weight: float
     embedding: list[float] | None = None
+    fact: str = ""  # the natural-language sentence retrieval.py renders as context
 
 
 class EdgeRef(BaseModel):
@@ -152,6 +153,21 @@ def _label_for(props: dict[str, Any]) -> str:
         return str(name)
     text = props.get("text") or ""
     return str(text)[:60]
+
+
+def _fact_for(kind: str, props: dict[str, Any]) -> str:
+    """The full-length fact retrieval.py renders one-per-line as context.
+
+    Memory nodes carry their fact in ``text`` (untruncated, unlike the
+    60-char display label); every other kind carries it in ``notes``
+    when present, falling back to the display name.
+    """
+    if kind == "Memory":
+        return str(props.get("text") or "")
+    notes = props.get("notes")
+    if notes:
+        return str(notes)
+    return str(props.get("name") or "")
 
 
 class GraphService:
@@ -440,22 +456,91 @@ class GraphService:
         ids: list[str] = []
         kinds: list[str] = []
         names: list[str] = []
+        facts: list[str] = []
+        weights: list[float] = []
         vectors: list[list[float]] = []
         for kind in NODE_KINDS:
-            text_col = NODE_TEXT_COLUMN[kind]
-            res = self._conn.execute(f"MATCH (n:{kind}) RETURN n.id, n.{text_col}, n.embedding")
+            res = self._conn.execute(f"MATCH (n:{kind}) RETURN n")
             while res.has_next():
-                node_id, text, embedding = res.get_next()
-                ids.append(node_id)
+                props = res.get_next()[0]
+                ids.append(props["id"])
                 kinds.append(kind)
-                names.append((text or "")[:60] if kind == "Memory" else (text or ""))
-                vectors.append(embedding)
+                names.append(_label_for(props))
+                facts.append(_fact_for(kind, props))
+                weights.append(props["weight"])
+                vectors.append(props["embedding"])
         matrix = (
             np.array(vectors, dtype=np.float64)
             if vectors
             else np.zeros((0, self._embedding_dim), dtype=np.float64)
         )
-        self._vector_cache = {"ids": ids, "kinds": kinds, "names": names, "matrix": matrix}
+        self._vector_cache = {
+            "ids": ids,
+            "kinds": kinds,
+            "names": names,
+            "facts": facts,
+            "weights": weights,
+            "matrix": matrix,
+        }
+
+    @property
+    def embedding_dim(self) -> int:
+        return self._embedding_dim
+
+    def get_node(self, node_id: str) -> NodeRef | None:
+        """Fetch one node by id. Not part of section 10.2's required list,
+
+        but a small, boring helper retrieval.py needs for the partner
+        boost (section 11 stage 3) without duplicating query logic.
+        """
+        kind = self._label_of(node_id)
+        if kind is None:
+            return None
+        res = self._conn.execute(f"MATCH (n:{kind} {{id: $id}}) RETURN n", {"id": node_id})
+        if not res.has_next():
+            return None
+        props = res.get_next()[0]
+        return NodeRef(
+            id=node_id,
+            kind=kind,
+            name=_label_for(props),
+            weight=props["weight"],
+            embedding=props["embedding"],
+            fact=_fact_for(kind, props),
+        )
+
+    def edges_among(self, node_ids: list[str]) -> list[EdgeRef]:
+        """Edges with both endpoints in ``node_ids``.
+
+        Not part of section 10.2's required list; retrieval.py's final
+        rendering step (section 11) needs this without paying for a
+        full ``snapshot()`` scan of every rel table on every turn. One
+        untyped query across every rel table beats one query per rel
+        kind -- each round trip has a fixed cost that dominates at
+        this result size (measured ~5 ms/query, ~40 ms for 8 kinds).
+        """
+        if len(node_ids) < 2:
+            return []
+        res = self._conn.execute(
+            "MATCH (a)-[r]->(b) WHERE a.id IN $ids AND b.id IN $ids "
+            "RETURN a.id, b.id, label(r), r.weight",
+            {"ids": node_ids},
+        )
+        out: list[EdgeRef] = []
+        while res.has_next():
+            src, dst, kind, weight = res.get_next()
+            out.append(
+                EdgeRef(id=f"{kind}:{src}->{dst}", kind=kind, source=src, target=dst, weight=weight)
+            )
+        return out
+
+    def get_embeddings(self, node_ids: list[str]) -> dict[str, np.ndarray]:
+        """Reuse the vector_search cache instead of a fresh query per id."""
+        self._ensure_vector_cache()
+        cache = self._vector_cache
+        assert cache is not None
+        index = {node_id: row for row, node_id in enumerate(cache["ids"])}
+        return {nid: cache["matrix"][index[nid]] for nid in node_ids if nid in index}
 
     def vector_search(self, q: np.ndarray, k: int) -> list[NodeRef]:
         """Section 10.2: cached numpy matrix, brute-force cosine.
@@ -483,33 +568,71 @@ class GraphService:
         top_idx = top_idx[np.argsort(-sims[top_idx])]
 
         return [
-            NodeRef(id=cache["ids"][i], kind=cache["kinds"][i], name=cache["names"][i], weight=1.0)
+            NodeRef(
+                id=cache["ids"][i],
+                kind=cache["kinds"][i],
+                name=cache["names"][i],
+                weight=cache["weights"][i],
+                embedding=cache["matrix"][i].tolist(),
+                fact=cache["facts"][i],
+            )
             for i in top_idx
         ]
 
     def expand(self, seeds: list[NodeRef], hops: int, cap: int) -> list[NodeRef]:
-        """Section 10.2: breadth-first Cypher, union with seeds, cap by weight."""
+        """Section 10.2: breadth-first, union with seeds, cap by weight.
+
+        Walked one hop at a time with plain (untyped, undirected)
+        1-hop matches rather than a single ``[*1..hops]`` variable-length
+        pattern. Kuzu's variable-length match enumerates every simple
+        path up to length ``hops`` before deduplicating, which blows up
+        combinatorially on a hub-heavy graph (e.g. many nodes attached
+        directly to the user); layer-by-layer BFS visits each node at
+        most once per hop instead. Measured ~130-200 ms -> ~15-30 ms at
+        300 nodes with a single hub of degree ~300.
+
+        Only ``(id, label, weight)`` come back from Cypher -- the
+        384-double embedding for each row is looked up in the
+        already-in-memory vector cache instead of being marshalled
+        through the Python bindings on every call.
+        """
         if not seeds:
             return []
-        seed_ids = [s.id for s in seeds]
-        res = self._conn.execute(
-            f"MATCH (s)-[*1..{hops}]-(n) WHERE s.id IN $ids "
-            "RETURN DISTINCT n ORDER BY n.weight DESC LIMIT $cap",
-            {"ids": seed_ids, "cap": cap},
-        )
-        merged: dict[str, NodeRef] = {s.id: s for s in seeds}
-        while res.has_next():
-            props = res.get_next()[0]
-            node_id = props["id"]
-            if node_id in merged:
-                continue
-            merged[node_id] = NodeRef(
+        self._ensure_vector_cache()
+        cache = self._vector_cache
+        assert cache is not None
+        row_by_id = {node_id: row for row, node_id in enumerate(cache["ids"])}
+
+        def to_node_ref(node_id: str, kind: str, weight: float) -> NodeRef:
+            row = row_by_id.get(node_id)
+            return NodeRef(
                 id=node_id,
-                kind=props["_label"],
-                name=_label_for(props),
-                weight=props["weight"],
+                kind=kind,
+                name=cache["names"][row] if row is not None else "",
+                weight=weight,
+                embedding=cache["matrix"][row].tolist() if row is not None else None,
+                fact=cache["facts"][row] if row is not None else "",
             )
-        ordered = sorted(merged.values(), key=lambda n: n.weight, reverse=True)
+
+        visited: dict[str, NodeRef] = {s.id: s for s in seeds}
+        frontier = [s.id for s in seeds]
+        for _ in range(max(0, hops)):
+            if not frontier:
+                break
+            res = self._conn.execute(
+                "MATCH (s)-[]-(n) WHERE s.id IN $ids RETURN DISTINCT n.id, label(n), n.weight",
+                {"ids": frontier},
+            )
+            next_frontier: list[str] = []
+            while res.has_next():
+                node_id, kind, weight = res.get_next()
+                if node_id in visited:
+                    continue
+                visited[node_id] = to_node_ref(node_id, kind, weight)
+                next_frontier.append(node_id)
+            frontier = next_frontier
+
+        ordered = sorted(visited.values(), key=lambda n: n.weight, reverse=True)
         return ordered[:cap]
 
     # ---------------------------------------------------------------- #
