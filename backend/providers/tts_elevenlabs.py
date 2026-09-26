@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import httpx
 
+from backend.app.services.cost import outbound
 from backend.providers.base import TTSProvider
 
 _URL_TEMPLATE = "https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
@@ -25,6 +26,7 @@ class ElevenLabsTTSProvider(TTSProvider):
         self._api_key = api_key
         self._default_voice_id = default_voice_id
 
+    @outbound("tts", "ElevenLabs", "the sentence text only")
     async def synthesize(self, text: str, voice_id: str | None) -> bytes:
         resolved_voice_id = voice_id or self._default_voice_id
         if not resolved_voice_id:

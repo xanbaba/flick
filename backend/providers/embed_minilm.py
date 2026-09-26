@@ -1,16 +1,14 @@
 """Embedding provider (ARCHITECTURE.md SW-4, section 17).
 
 Tries ``sentence-transformers``' ``all-MiniLM-L6-v2`` lazily, CPU
-only, on first call. ``sentence-transformers`` is not a project
-dependency (it pulls torch, and AGENTS.md section 9 warns against
-adding anything that risks failing to install on the demo machine at
-hour 30); if it is not installed, or the model cannot be loaded
-without network access, this degrades to a deterministic offline
-hashing-trick embedding of the same dimensionality. Same texts always
-hash to the same vector and shared tokens raise cosine similarity, so
-retrieval and dedup are exercisable end-to-end with no model download
-and no network call -- required for AGENTS.md section 8's "no network
-calls in tests" and for SW-13's degrade-not-raise rule.
+only, on first call. If it is not installed, or the model cannot be
+loaded without network access, this degrades to a deterministic
+offline hashing-trick embedding of the same dimensionality. Same
+texts always hash to the same vector and shared tokens raise cosine
+similarity, so retrieval and dedup are exercisable end-to-end with no
+model download and no network call -- required for AGENTS.md section
+8's "no network calls in tests" and for SW-13's degrade-not-raise
+rule.
 """
 
 from __future__ import annotations
