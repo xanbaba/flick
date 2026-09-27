@@ -64,6 +64,7 @@ SPELLER_WAIT = "SPELLER_WAIT"
 _WAIT_STATES = {INTENT_WAIT, CANDIDATE_WAIT, SPELLER_WAIT}
 _FALLBACK_LABELS = ["Yes", "No", "Tell me more", "Not now"]
 NO_SELECTION_MESSAGE = "No selection — listening again"
+TURN_FAILED_MESSAGE = "Something went wrong; listening again"
 
 Broadcast = Callable[[str, dict[str, object]], Awaitable[None]]
 
@@ -354,6 +355,11 @@ class Orchestrator:
             await self._intent_round()
         except MemoryUnavailableError:
             await self._idle("Memory unavailable; this turn was not generated")
+        except Exception as exc:
+            # Never leave the FSM stranded outside IDLE: every later utterance
+            # would be dropped until a backend restart.
+            logger.exception("orchestrator.turn_failed", error_type=type(exc).__name__)
+            await self._idle(TURN_FAILED_MESSAGE)
         finally:
             summary = cost_turn.finalize()
             await self._broadcast("privacy.cost", summary.model_dump())

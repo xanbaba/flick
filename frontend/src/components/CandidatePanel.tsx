@@ -2,8 +2,9 @@ import { useState } from 'react'
 
 import { api } from '../lib/api'
 import { unlockAudio } from '../lib/playback'
+import type { ScanView } from '../lib/scan'
 import type { FlickSocket } from '../lib/ws'
-import type { FsmState, WsPayloads } from '../lib/types'
+import type { FsmState, SysStatusPayload, WsPayloads } from '../lib/types'
 
 const STEPS: FsmState[] = [
   'TRANSCRIBING',
@@ -26,6 +27,8 @@ export function CandidatePanel({
   labels,
   round,
   selectedIdx,
+  scan = null,
+  status = null,
   spoken,
   fallback,
   grounding,
@@ -36,6 +39,8 @@ export function CandidatePanel({
   labels: string[]
   round: 'intent' | 'candidate' | 'speller' | null
   selectedIdx: number | null
+  scan?: ScanView | null
+  status?: SysStatusPayload | null
   spoken: WsPayloads['conv.spoken'] | null
   fallback: boolean
   grounding: string[]
@@ -45,7 +50,7 @@ export function CandidatePanel({
 
   function press(key: string) {
     unlockAudio()
-    socket?.send({ type: 'client.key_press', ts: Date.now() / 1000, key })
+    socket?.send({ type: 'client.key_press', ts: Date.now() / 1000, key, trial_id: scan?.trialId ?? null })
   }
 
   async function sendPrompt() {
@@ -63,6 +68,11 @@ export function CandidatePanel({
 
   const speaking = (fsm === 'SPEAKING' || fsm === 'LEARNING') && spoken != null
   const showTiles = WAITING.has(fsm)
+  const bci = status?.input_source === 'bci'
+  const sensorBlocked = bci && status?.ready === false
+  const scanHint = bci
+    ? 'Clench your jaw to move · close your eyes ~2 s to choose'
+    : 'n or → to move · s or Enter to choose · number keys pick directly'
 
   return (
     <section className="flex flex-col gap-3 rounded-[10px] border border-line bg-panel px-4 py-3.5">
@@ -92,11 +102,23 @@ export function CandidatePanel({
             : 'Fallback choices: generation is unavailable.'}
         </p>
       )}
+      {(sensorBlocked || (showTiles && scan)) && (
+        <p role="status" aria-live="polite" className="flex flex-wrap items-center gap-2 text-sm">
+          {sensorBlocked && (
+            <span className="rounded-md bg-[oklch(0.7_0.19_25/0.16)] px-2 py-0.5 font-mono text-[11px] uppercase tracking-wide text-[oklch(0.78_0.16_30)]">
+              Headset: {status?.blocked_reason ?? 'not ready'}
+            </span>
+          )}
+          {showTiles && scan && <span className="text-muted">{scanHint}</span>}
+        </p>
+      )}
       <div className="flex min-h-[118px] items-stretch gap-2.5">
         {!showTiles && !GENERATING.has(fsm) && !speaking && (
           <div className="flex flex-1 flex-col justify-center gap-2 rounded-lg border border-dashed border-[oklch(0.33_0.012_160)] px-4 py-3.5">
             <span className="text-xl font-medium text-[oklch(0.76_0.012_160)]">Listening</span>
-            <span className="text-sm text-muted">{detail || 'Type what the partner says, then choose with keys 1–5.'}</span>
+            <span className="text-sm text-muted">
+              {detail || (scan || bci ? `Type what the partner says, then: ${scanHint}.` : 'Type what the partner says, then choose with keys 1–5.')}
+            </span>
           </div>
         )}
         {GENERATING.has(fsm) && (
@@ -107,24 +129,28 @@ export function CandidatePanel({
         )}
         {showTiles &&
           labels.map((label, i) => {
-            const chosen = selectedIdx === i
+            const chosen = selectedIdx === i || scan?.selectedIdx === i
+            const lit = scan != null && scan.selectedIdx === null && scan.highlightIdx === i
             return (
               <button
                 key={`${round}-${i}-${label}`}
                 type="button"
                 disabled={!label.trim()}
+                aria-current={lit ? 'true' : undefined}
                 onClick={() => press(String(i + 1))}
-                className={`flex min-w-0 flex-col gap-2 rounded-lg border px-3.5 py-3 text-left transition-all ${
+                className={`flex min-w-0 flex-col gap-2 rounded-lg border px-3.5 py-3 text-left transition-all duration-150 ${
                   chosen
                     ? 'flex-[2] border-accent bg-accent/10'
-                    : 'flex-1 border-line bg-[oklch(0.165_0.008_160)]'
+                    : lit
+                      ? 'flex-[1.4] border-2 border-accent bg-accent/15 shadow-[0_0_0_3px_oklch(0.8_0.15_160/0.25)]'
+                      : 'flex-1 border-line bg-[oklch(0.165_0.008_160)]'
                 }`}
               >
                 <span className="flex items-center justify-between font-mono text-[10.5px] uppercase tracking-wide text-muted">
-                  <span>{i + 1}</span>
+                  <span>{lit ? `▶ ${i + 1}` : i + 1}</span>
                   <span>{i === labels.length - 1 && label === 'Cancel' ? 'cancel' : round ?? ''}</span>
                 </span>
-                <span className={`leading-snug ${chosen ? 'text-lg font-medium text-ink' : 'text-sm text-[oklch(0.86_0.01_160)]'}`}>
+                <span className={`leading-snug ${chosen || lit ? 'text-lg font-medium text-ink' : 'text-sm text-[oklch(0.86_0.01_160)]'}`}>
                   {label || 'Unused'}
                 </span>
               </button>
