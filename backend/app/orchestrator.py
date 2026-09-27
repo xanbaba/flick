@@ -23,6 +23,8 @@ import uuid
 from collections.abc import Awaitable, Callable
 
 from backend.app.services.cost import CostTracker
+from backend.app.services.generation import GenerationService
+from backend.app.services.graph import EdgeRef, GraphService
 from backend.app.services.interfaces import (
     ExtractionServiceProtocol,
     GenerationServiceProtocol,
@@ -33,7 +35,9 @@ from backend.app.services.interfaces import (
 )
 from backend.app.services.speech import SpeechService
 from backend.app.services.voice import VoiceService
+from backend.app.services.worker import MemoryWorker, run_memory
 from backend.providers.base import Transcript
+from backend.providers.llm_static import StaticLLMProvider
 from backend.providers.registry import get_llm_provider
 from inputs.base import InputSource
 from shared.bus import Publisher
@@ -67,6 +71,10 @@ NO_SELECTION_MESSAGE = "No selection — listening again"
 Broadcast = Callable[[str, dict[str, object]], Awaitable[None]]
 
 
+class SeedConflictError(RuntimeError):
+    """A persona is already seeded or another seed request is running."""
+
+
 class Orchestrator:
     def __init__(
         self,
@@ -85,7 +93,11 @@ class Orchestrator:
         speller: SpellerServiceProtocol | None = None,
         wait_timeout_s: float = 30.0,
         stim_address: str | None = None,
+        graph: GraphService | None = None,
+        worker: MemoryWorker | None = None,
     ) -> None:
+        self.graph = graph
+        self.worker = worker
         self.input = input_source
         self._broadcast = broadcast
         self.voice = voice
@@ -116,6 +128,9 @@ class Orchestrator:
         self._seeded = False
         self._user_name = ""
         self._context_node_ids: list[str] = []
+        self._context_edges: list[EdgeRef] = []
+        self._partner_id: str | None = None
+        self._seed_lock = asyncio.Lock()
 
     async def start(self) -> None:
         await self.input.start()
@@ -127,8 +142,8 @@ class Orchestrator:
             except Exception as exc:
                 logger.warning("orchestrator.stim_bind_failed", error=str(exc))
                 self._stim = None
-        if self.onboarding is not None and self.onboarding.status().get("seeded"):
-            self._seeded = True
+        status = await self.onboarding_status()
+        if status["seeded"]:
             await self._transition(IDLE, "graph already seeded")
             self.speech.gate(False)
         else:
@@ -148,27 +163,46 @@ class Orchestrator:
             self._stim = None
 
     async def seed(self, bio: str, name: str) -> dict[str, object]:
-        if self.onboarding is not None:
-            result = await self.onboarding.seed(bio, name)
-            payload: dict[str, object] = {
-                "seeded": True,
-                "node_count": result.node_count,
-            }
-        else:
-            # No onboarding service yet: the turn still has to be able
-            # to leave UNSEEDED (acceptance test A6). Nothing is written
-            # to a graph that does not exist.
-            payload = {"seeded": True, "node_count": 0}
-        self._seeded = True
-        self._user_name = name
-        await self._transition(IDLE, f"seeded as {name}")
-        self.speech.gate(False)
-        return payload
+        if self._seed_lock.locked():
+            raise SeedConflictError("Biography seeding is already in progress")
+        async with self._seed_lock:
+            if (await self.onboarding_status())["seeded"]:
+                raise SeedConflictError("A persona already exists; reseeding is not supported")
+            try:
+                if self.onboarding is not None:
+                    async for batch in self.onboarding.seed(bio, name):
+                        await self._broadcast("graph.bloom", batch.model_dump())
+                else:
+                    # Standalone orchestration tests may omit the knowledge layer.
+                    self._seeded = True
+                    self._user_name = name
+            finally:
+                status = await self.onboarding_status()
+                if status["seeded"]:
+                    await self._transition(IDLE, f"seeded as {self._user_name}")
+                    self.speech.gate(False)
+            return status
 
-    def onboarding_status(self) -> dict[str, object]:
-        if self.onboarding is not None:
-            return dict(self.onboarding.status())
-        return {"seeded": self._seeded, "node_count": 0}
+    async def onboarding_status(self) -> dict[str, object]:
+        if self.graph is None:
+            return {"seeded": self._seeded, "node_count": 0}
+        people = await run_memory(self.worker, self.graph.people)
+        user = next((person for person in people if person.id == "user"), None)
+        self._seeded = user is not None
+        self._user_name = user.name if user is not None else ""
+        return {
+            "seeded": self._seeded,
+            "node_count": await run_memory(self.worker, self.graph.node_count),
+        }
+
+    async def snapshot(self) -> dict[str, object]:
+        if self.graph is None:
+            return {"nodes": [], "edges": []}
+        nodes, edges = await run_memory(self.worker, self.graph.snapshot)
+        return {
+            "nodes": [node.model_dump() for node in nodes],
+            "edges": [edge.model_dump() for edge in edges],
+        }
 
     async def submit_utterance(self, text: str) -> None:
         """Run a turn until it is waiting on a selection, or has returned to IDLE."""
@@ -216,17 +250,17 @@ class Orchestrator:
         cost_turn = self.cost.start_turn(self._turn_id)
         try:
             await self._transition(TRANSCRIBING, text)
+            await self._ground()
             await self._broadcast(
                 "conv.transcript",
                 {
                     "speaker": "partner",
                     "text": text,
-                    "partner_id": None,
-                    "partner_name": None,
+                    "partner_id": self._partner_id,
+                    "partner_name": self._partner_name if self._partner_id else None,
                     "confidence": 1.0,
                 },
             )
-            await self._ground()
             if self.mode == "speller" and self.speller is not None:
                 await self._speller_loop()
                 return
@@ -237,35 +271,40 @@ class Orchestrator:
 
     async def _ground(self) -> None:
         await self._transition(GROUNDING, "partner id + retrieval")
-        partner_name = "someone"
-        partner_relationship = "unknown"
-        partner_id: str | None = None
+        self._partner_name = "someone"
+        self._partner_relationship = "unknown"
+        self._partner_id = None
         if self.partner is not None:
             identified = await self.partner.identify(self._utterance)
-            partner_id = identified.partner_id
-            current = self.partner.get_current()
-            if current is not None:
-                partner_name = current.name
-                partner_relationship = current.relationship
-        context = ""
+            self._partner_id = identified.partner_id
+            if self.graph is not None:
+                people = await run_memory(self.worker, self.graph.people)
+                current = next((p for p in people if p.id == self._partner_id), None)
+                if current is not None:
+                    self._partner_name = current.name
+                    self._partner_relationship = current.relationship
+        await self._retrieve(self._utterance)
+
+    async def _retrieve(self, query: str) -> None:
+        self._context = ""
         self._context_node_ids = []
-        activated: list[str] = []
-        if self.retrieval is not None:
-            result = await self.retrieval.retrieve(
-                self._utterance,
-                partner_id=partner_id,
-                select_k=self.config.retrieval.select_k,
-            )
-            context = result.context_text
-            self._context_node_ids = [node.id for node in result.nodes]
-            activated = result.activated_node_ids
-        self._context = context
-        self._partner_name = partner_name
-        self._partner_relationship = partner_relationship
-        if activated:
+        self._context_edges = []
+        if self.retrieval is None:
+            return
+        result = await run_memory(
+            self.worker, self.retrieval.retrieve, query, partner_id=self._partner_id
+        )
+        self._context = result.context_text
+        self._context_node_ids = [node.id for node in result.nodes if node.fact]
+        self._context_edges = result.edges
+        if result.activated_node_ids:
             await self._broadcast(
                 "graph.activate",
-                {"node_ids": activated, "edge_ids": [], "reason": "grounding"},
+                {
+                    "node_ids": result.activated_node_ids,
+                    "edge_ids": [edge.id for edge in result.edges],
+                    "reason": "retrieval",
+                },
             )
 
     async def _intent_round(self) -> None:
@@ -279,8 +318,11 @@ class Orchestrator:
                 return
             self._intent = labels[selection.target_idx]
             await self._transition(CANDIDATE_GEN, self._intent)
+            await self._retrieve(f"{self._utterance}\nChosen intent: {self._intent}")
             candidates, grounding = await self._candidates()
-            selection = await self._show_and_wait(candidates, "candidate", CANDIDATE_WAIT)
+            selection = await self._show_and_wait(
+                candidates, "candidate", CANDIDATE_WAIT, grounding
+            )
             if selection is None:
                 await self._idle(NO_SELECTION_MESSAGE)
                 return
@@ -292,7 +334,11 @@ class Orchestrator:
             return
 
     async def _show_and_wait(
-        self, labels: list[str], round_name: str, wait_state: str
+        self,
+        labels: list[str],
+        round_name: str,
+        wait_state: str,
+        grounding: list[str] | None = None,
     ) -> Selection | None:
         self.trial_id = uuid.uuid4().hex
         self._labels = labels
@@ -307,7 +353,7 @@ class Orchestrator:
             payload = {
                 "trial_id": self.trial_id,
                 "candidates": labels,
-                "grounding": [],
+                "grounding": grounding or [],
             }
         await self._broadcast(event, payload)
         await self._transition(wait_state, self.trial_id)
@@ -359,16 +405,42 @@ class Orchestrator:
                 "graph.activate",
                 {"node_ids": grounding, "edge_ids": [], "reason": "spoken"},
             )
-        if self.extraction is not None:
-            extracted = await self.extraction.extract_and_writeback(self._utterance, text)
-            await self._broadcast(
-                "graph.bloom",
-                {
-                    "nodes": [node.model_dump() for node in extracted.nodes],
-                    "edges": [edge.model_dump() for edge in extracted.edges],
-                },
-            )
-        await self._idle("turn complete")
+        detail = "turn complete"
+        try:
+            if self.graph is not None:
+                grounded = set(grounding) & set(self._context_node_ids)
+                edge_ids = [
+                    edge.id
+                    for edge in self._context_edges
+                    if edge.source in grounded and edge.target in grounded
+                ]
+                await run_memory(
+                    self.worker,
+                    self.graph.reinforce,
+                    list(grounded),
+                    edge_ids,
+                    node_increment=self.config.reinforcement.node_increment,
+                    edge_increment=self.config.reinforcement.edge_increment,
+                    max_weight=self.config.reinforcement.max_weight,
+                )
+            if self.extraction is not None:
+                extracted = await self.extraction.extract_and_writeback(self._utterance, text)
+                snapshot = await self.snapshot()
+                nodes = [n for n in snapshot["nodes"] if n["id"] in extracted.committed_node_ids]
+                edges = [e for e in snapshot["edges"] if e["id"] in extracted.committed_edge_ids]
+                if nodes or edges:
+                    await self._broadcast("graph.bloom", {"nodes": nodes, "edges": edges})
+        except Exception as exc:
+            logger.warning("orchestrator.learning_failed", error_type=type(exc).__name__)
+            detail = "turn complete; memory update unavailable"
+        finally:
+            if self.graph is not None:
+                try:
+                    await self._broadcast("graph.snapshot", await self.snapshot())
+                except Exception as exc:
+                    logger.warning("orchestrator.snapshot_failed", error_type=type(exc).__name__)
+                    detail = "turn complete; memory update unavailable"
+            await self._idle(detail)
 
     async def _idle(self, detail: str) -> None:
         self.trial_id = None
@@ -431,7 +503,18 @@ class Orchestrator:
                 candidates, grounding = [], []
             if len(candidates) >= n:
                 return candidates[:n] + ["Cancel"], grounding
-            return _FALLBACK_CANDIDATES[:n] + ["Cancel"], []
+            fallback = await GenerationService(
+                llm=StaticLLMProvider(), config=self.config.generation
+            ).generate_candidates(
+                self._user_name,
+                self._context,
+                self._context_node_ids,
+                self._partner_name,
+                self._partner_relationship,
+                self._utterance,
+                self._intent,
+            )
+            return fallback.candidates[:n] + ["Cancel"], fallback.grounding
         candidates = await self._offline_json_list("candidates", n, _FALLBACK_CANDIDATES)
         return candidates[:n] + ["Cancel"], []
 

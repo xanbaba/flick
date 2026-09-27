@@ -673,7 +673,11 @@ class GraphService:
         aliases: dict[str, str] = {}
         dropped = 0
         for raw in payload.get("nodes", []):
-            if not isinstance(raw, dict) or raw.get("kind") not in NODE_COLUMN_TYPES:
+            if (
+                not isinstance(raw, dict)
+                or not isinstance(raw.get("kind"), str)
+                or raw["kind"] not in NODE_COLUMN_TYPES
+            ):
                 dropped += 1
                 continue
             kind = raw["kind"]
@@ -684,6 +688,9 @@ class GraphService:
                 dropped += 1
                 continue
             props[text_col] = text.strip()
+            if "id" in props and props["id"] is not None and not isinstance(props["id"], str):
+                dropped += 1
+                continue
             node_id = props.get("id") or f"{kind.lower()}_{uuid.uuid4().hex[:12]}"
             valid = isinstance(node_id, str) and node_id not in kinds
             for col, sql_type in NODE_COLUMN_TYPES[kind].items():
@@ -707,7 +714,11 @@ class GraphService:
 
         edges: list[tuple[str, str, str, dict[str, Any]]] = []
         for raw in payload.get("edges", []):
-            if not isinstance(raw, dict) or raw.get("kind") not in REL_PAIRS:
+            if (
+                not isinstance(raw, dict)
+                or not isinstance(raw.get("kind"), str)
+                or raw["kind"] not in REL_PAIRS
+            ):
                 dropped += 1
                 continue
             kind = raw["kind"]

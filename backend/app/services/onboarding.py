@@ -4,13 +4,13 @@ Two LLM passes build a graph from a biography: the first asks for a
 balanced 40-60 nodes, the second enriches every Person and Activity.
 Malformed entries are dropped by ``GraphService.seed_from_json``. When
 the provider is the offline static fallback (or both passes fail), the
-committed Marcus fixture is loaded instead, so a seed still completes.
+committed Marcus fixture is used only for the unchanged demo biography.
+Custom-biography failures remain retryable without inserting substitute data.
 
 After insert, nodes are streamed as bloom batches of about 10, with
 ``interval_s`` between batches (150 ms in production) so a dashboard
 can show the graph growing. This service yields the batches; the
-WebSocket broadcast lives in the orchestrator, which is out of scope
-here.
+WebSocket broadcast lives in the orchestrator.
 """
 
 from __future__ import annotations
@@ -120,6 +120,7 @@ class OnboardingService:
             n
             for n in payload.get("nodes", [])
             if isinstance(n, dict)
+            and isinstance(n.get("kind"), str)
             and n.get("kind") in {"Person", "Place", "Thing", "Activity", "Need", "Memory"}
             and isinstance(n.get("text") or n.get("name"), str)
             and (n.get("text") or n.get("name")).strip()
@@ -225,7 +226,11 @@ class OnboardingService:
         if not isinstance(nodes, list) or not isinstance(edges, list):
             return None
         return {
-            "nodes": [n for n in nodes if isinstance(n, dict)],
+            "nodes": [
+                n
+                for n in nodes
+                if isinstance(n, dict) and (not n.get("id") or isinstance(n["id"], str))
+            ],
             "edges": [e for e in edges if isinstance(e, dict)],
         }
 

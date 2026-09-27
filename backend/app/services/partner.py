@@ -126,6 +126,9 @@ class PartnerService:
         except Exception as exc:
             logger.warning("partner.identification_failed", error_type=type(exc).__name__)
             return self._keep_previous("partner identification unavailable")
+        if self._override_id is not None:
+            assert self._current is not None
+            return self._current
         if parsed is None:
             return self._keep_previous("partner identification unavailable")
 
@@ -137,6 +140,9 @@ class PartnerService:
             for person in await run_memory(self._worker, self._graph.people)
             if person.id != "user"
         }
+        if self._override_id is not None:
+            assert self._current is not None
+            return self._current
         if parsed.partner_id not in known:
             return self._keep_previous("proposed partner is not a known person")
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Iterator
 from pathlib import Path
@@ -9,11 +10,12 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from backend.app.services.extraction import ExtractionService
+from backend.app.services.extraction import ExtractedEdge, ExtractedNode, ExtractionService
 from backend.app.services.graph import GraphService
 from backend.app.services.onboarding import OnboardingService, SeedUnavailableError
 from backend.app.services.partner import PartnerService
 from backend.app.services.persona import DEMO_BIO, DEMO_NAME
+from backend.app.services.retrieval import RetrievalService
 from backend.app.services.worker import MemoryWorker
 from backend.providers.base import LLMProvider
 
@@ -139,3 +141,66 @@ async def test_worker_serializes_database_lifecycle(tmp_path: Path) -> None:
 def test_demo_biography_matches_dashboard_prefill() -> None:
     source = Path("frontend/src/lib/persona.ts").read_text(encoding="utf-8")
     assert DEMO_BIO in source
+
+
+def test_malformed_seed_proposals_are_dropped(graph: GraphService) -> None:
+    result = graph.seed_from_json(
+        {
+            "nodes": [
+                {"kind": [], "name": "invalid"},
+                {"id": [], "kind": "Thing", "name": "tea"},
+                {"id": "user", "kind": "Person", "name": "Alex"},
+            ],
+            "edges": [{"kind": [], "source": "user", "target": "user"}],
+        }
+    )
+    assert result.node_count == 1
+    assert result.dropped == 3
+
+
+async def test_override_wins_during_inflight_identification(graph: GraphService) -> None:
+    graph.upsert_node("Person", {"id": "sam", "name": "Sam"})
+    graph.upsert_node("Person", {"id": "pat", "name": "Pat"})
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    async def identify(*args: object, **kwargs: object) -> str:
+        entered.set()
+        await release.wait()
+        return '{"partner_id":"sam","confidence":0.95,"reason":"name"}'
+
+    llm = AsyncMock(spec=LLMProvider)
+    llm.complete.side_effect = identify
+    service = PartnerService(graph, llm=llm)
+    task = asyncio.create_task(service.identify("Sam here"))
+    await entered.wait()
+    service.set_override("pat")
+    release.set()
+    assert (await task).partner_id == "pat"
+
+
+def test_writeback_storage_failure_rolls_back_new_nodes(
+    graph: GraphService,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    graph.upsert_node("Person", {"id": "user", "name": "Alex"})
+
+    def fail(*args: object, **kwargs: object) -> str:
+        raise RuntimeError("storage failure")
+
+    monkeypatch.setattr(graph, "upsert_edge", fail)
+    with pytest.raises(RuntimeError, match="storage failure"):
+        ExtractionService(graph)._commit_atomic(
+            [ExtractedNode(kind="Thing", name="mint tea", notes="You have tea.", confidence=0.9)],
+            [ExtractedEdge(kind="LIKES", source="user", target_name="mint tea", confidence=0.9)],
+        )
+    assert graph.node_count() == 1
+
+
+def test_retrieval_preserves_one_fact_per_node(graph: GraphService) -> None:
+    graph.upsert_node(
+        "Thing", {"id": "tea", "name": "mint tea", "notes": "You have mint tea.\n- It is warm."}
+    )
+    graph.upsert_node("Person", {"id": "user", "name": "Alex"})
+    result = RetrievalService(graph).retrieve("mint tea")
+    assert len(result.context_text.splitlines()) == len(result.nodes)
+    assert "You have mint tea. - It is warm." in result.context_text
