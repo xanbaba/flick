@@ -4,6 +4,53 @@ Changes to `ARCHITECTURE.md`, newest first. Each entry lists what changed, why, 
 
 ---
 
+## P1 sensor built: clench = next, eyes closed = select — 2026-09-27
+
+Mapping confirmed by Zahid: **jaw clench = next**, **eyes closed ~2 s = select**; the mental command is gone.
+
+**New code (Dev B, `sensor/`, `python -m sensor.main`)**
+- `settings.py`: measured defaults. next = mean log10 gamma FC5/FC6/T7/T8, z >= 8 held 0.25 s. select = mean log10 alpha O1/O2, z >= 2 held 0.5 s, own refractory 3 s. Shared refractory 0.8 s, contact >= 3, stale gap 0.5 s, 20 s calibration. Reads an optional `sensor:` section of `config.yaml`.
+- `engine.py` + `triggers/base.py`: calibration on 20 s eyes-open rest, then z-scores; hold, release before re-arm, shared + own refractory, gap reset, no triggers before calibration / contact data / with poor contact on the six sensors used. A select is flagged `contaminated` if jaw z >= 4 during its hold.
+- `sources/`: `cortex.py` (live; streams pow, dev, eq, fac; no training profile), `synthetic.py` (scripted clenches / eyes closed, no headset), `replay.py` (recorded session at original pace), `cortex_client.py` (from `experiments/triggers/`).
+- `recorder.py`: background JSONL writer to `data/sessions/` (manifest, raw packets, triggers), bounded queue, dropped count.
+- `main.py`: connects Cortex first, calibrates, publishes on 5555 `bci.bandpower` (8 Hz), `bci.trigger_level` (z-scores), `bci.trigger`, `bci.status` (1 Hz); listens on 5556 for `sensor.control {"action": "calibrate"}`. Never adds tile/trial IDs.
+- `tests/test_sensor.py`: 16 unit tests (calibration, one next per clench, release, select, refractories, contamination, contact gating, gap reset, settings, service, recorder -> replay). All pass; ruff clean.
+- `pyproject.toml` / `uv.lock`: adds `websocket-client` (Cortex).
+
+**Needs Khanbaba's contract commit (AGENTS.md §4)** — models live in `sensor/messages.py` until then:
+- `TriggerEvent.kind`: `jaw_clench` | `eyes_closed`; `contaminated` applies to select.
+- `TriggerLevel`: levels/thresholds are z-scores, not 0..1 Cortex powers.
+- `SensorStatus`: adds `calibrated`, `calibration_progress`; `profile_loaded` / `trained_actions` unused.
+- `SensorControl`: adds `calibrate`; training actions unused.
+- `config.yaml`: optional `sensor:` section (defaults apply without it).
+- `run.sh` still starts `stimulus.main` (P2, removed in §3.2) — that line should go.
+- New dependency `websocket-client` (the existing `websockets` is async; the Cortex client is the tested synchronous one).
+
+---
+
+## Trigger tests on the headset — 2026-09-27
+
+Tool: `experiments/triggers/` (`run_session.py`, `analyze.py`). Subject: Zahid, EPOC X `EPOCX-E502091A`.
+
+**Jaw clench — works** (session `20260927-065250_zahid_emotiv`, 10 cues + 30 s rest + 30 s talking/smiling + 10 push cues)
+- Emotiv's facial detector caught every clench at full strength but labelled it `smile` / `smirk` / `laugh`, never `clench` → the label cannot be used.
+- Jaw-muscle signal (gamma band power on FC5, FC6, T7, T8, z-scored against the rest block), z ≥ 8 held 0.25 s: **10/10 detected, 0 false** in rest, talking/smiling and push periods.
+
+**Push against the table (trained mental command) — dropped** (sessions `20260927-065250`, `20260927-070416_zahid_emotiv`)
+- Profile `flickzh`: 5 neutral + 6 push trainings, Emotiv training score **0.0625** (threshold 0.75), push sensitivity 1/10.
+- The mental-command stream reported `neutral` with power 0 for all 859 samples; no push ever fired.
+- Raw band power showed no consistent change while pushing (0–1 of 70 features beyond chance) in either session.
+- Pushing never approached the clench threshold (jaw z max 3.3 vs 8).
+
+**Eyes closed ~2 s — works** (session `20260927-070950_zahid_emotiv`, 20 s eyes-open rest + 10 cues of 3 s)
+- O1/O2 alpha z-scored against eyes-open rest; peaks 4.3–7.2 on every closure. z ≥ 2 held 0.5 s: **10/10** (one counted as early because alpha was still raised from the previous closure), **0 false** with eyes open, delay ≈ 2 s.
+- Closing the eyes did not affect the jaw-muscle detector (max z 1.2 vs 8).
+- Alpha stays raised ~2 s after the eyes open → a ~3 s refractory period after an eyes-closed trigger.
+
+**Decision:** drop the mental command. Triggers are **eyes closed (~2 s)** and **jaw clench**; Zahid proposed eyes closed = **select**, clench = next (to confirm). Thresholds were chosen on one session each; confirm with a combined run.
+
+---
+
 ## Merge of `main` (2e72970) — 2026-09-27
 
 **What happened:** Khanbaba adopted the revision-3 proposals (A1–A16 in `docs/for-review/ARCHITECTURE_ADDITIONS.md`) into **his** `ARCHITECTURE.md` (commits `9c7e74d`, `2e72970`), with his own adjustments in his §27.4. His `ARCHITECTURE.md` is now the single source of truth; the revision 2 and 3 drafts from this branch are retired (copies kept in the Claude project). Section numbers in the entries below refer to those retired drafts.
