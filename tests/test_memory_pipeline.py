@@ -486,3 +486,15 @@ def test_unconfirmed_playback_keeps_microphone_muted(
         # A subsequent manual turn timing out must not accidentally rearm the mic.
         client.post("/api/utterance", json={"text": "Try again"})
         assert app.state.orchestrator.speech.gated
+
+
+def test_status_exposes_configured_decision_values(application: ApplicationFactory) -> None:
+    create, _, _ = application
+    app = create()
+    app.state.orchestrator.config.decision.rho_threshold = 0.61
+    app.state.orchestrator.config.decision.dwell_windows = 7
+    with TestClient(app) as client, client.websocket_connect("/ws") as ws:
+        status = receive_kind(ws, "sys.status")
+        assert status["decision"]["rho_threshold"] == 0.61
+        assert status["decision"]["dwell_windows"] == 7
+        assert status["cancel_idx"] == 4

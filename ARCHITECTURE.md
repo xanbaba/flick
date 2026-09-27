@@ -657,6 +657,10 @@ browser has already stopped its output.
 | `privacy.cost` | event | `{turn_id, items, turn_usd, session_usd}` |
 | `spectator.link` | on connect | `{url, connected_viewers}` |
 
+`sys.status` also supplies configured decision thresholds and the input's
+Cancel index. The score panel uses these values and renders missing scores or
+unmeasured frequencies as unavailable rather than as measured zeroes.
+
 ```python
 class GraphNode(BaseModel):
     id: str

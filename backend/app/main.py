@@ -153,6 +153,8 @@ def create_app() -> FastAPI:
             "providers": health_snapshot(),
             "stimulus_integrity": None,
             "telemetry_dropped": telemetry.dropped_count,
+            "cancel_idx": source.n_targets - 1,
+            "decision": config.decision.model_dump(),
         }
 
     async def snapshot_payload() -> dict[str, object]:

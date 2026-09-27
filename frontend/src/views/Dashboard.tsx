@@ -76,7 +76,7 @@ export function Dashboard({
         <MemoryBrainView brainRef={brainRef} empty={empty} onReady={onReady} />
         <div className="flex min-h-0 flex-col gap-2.5">
           <Transcript lines={transcript} />
-          <TargetScores streams={streams} labels={labels} frequencies={frequencies} cancelIdx={cancelIdx} />
+          <TargetScores streams={streams} labels={labels} frequencies={frequencies} cancelIdx={cancelIdx} decision={status?.decision} />
           <PsdPlotView streams={streams} frequencies={frequencies} cancelIdx={cancelIdx} />
         </div>
       </section>
