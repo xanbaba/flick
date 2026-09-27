@@ -40,7 +40,9 @@ from backend.providers.base import EmbeddingProvider
 from shared.config import DatabaseConfig, ReinforcementConfig
 from shared.schemas import GraphEdge, GraphNode
 
-NODE_SELECT = "SELECT *, embedding::text AS vector FROM flick.nodes"
+NODE_FIELDS = "id,kind,content,attributes,weight,created_at,last_accessed"
+NODE_SELECT = f"SELECT {NODE_FIELDS}, embedding::text AS vector FROM flick.nodes"
+NODE_METADATA_SELECT = f"SELECT {NODE_FIELDS} FROM flick.nodes"
 
 
 class MemoryUnavailableError(RuntimeError):
@@ -548,7 +550,7 @@ class TigerGraphService:
         self, nodes: list[dict[str, Any]], edges: list[dict[str, Any]]
     ) -> None:
         """Compare identities, facts, attributes, weights/counts before commit."""
-        rows = await self._fetch(NODE_SELECT + " WHERE profile_id=$1", self.profile_id)
+        rows = await self._fetch(NODE_METADATA_SELECT + " WHERE profile_id=$1", self.profile_id)
         stored = {r["id"]: r for r in rows}
         if len(stored) != len(nodes):
             raise ValueError("Imported node count differs")
@@ -594,7 +596,8 @@ class TigerGraphService:
 
     async def people(self) -> list[Person]:
         rows = await self._fetch(
-            NODE_SELECT + " WHERE profile_id=$1 AND kind='Person' ORDER BY id", self.profile_id
+            NODE_METADATA_SELECT + " WHERE profile_id=$1 AND kind='Person' ORDER BY id",
+            self.profile_id,
         )
         result = []
         for row in rows:
@@ -612,7 +615,9 @@ class TigerGraphService:
         return result
 
     async def snapshot(self) -> tuple[list[GraphNode], list[GraphEdge]]:
-        rows = await self._fetch(NODE_SELECT + " WHERE profile_id=$1 ORDER BY id", self.profile_id)
+        rows = await self._fetch(
+            NODE_METADATA_SELECT + " WHERE profile_id=$1 ORDER BY id", self.profile_id
+        )
         nodes = [
             GraphNode(
                 id=r["id"],
@@ -643,7 +648,10 @@ class TigerGraphService:
 
     async def get_embeddings(self, ids: list[str]) -> dict[str, np.ndarray]:
         rows = await self._fetch(
-            NODE_SELECT + " WHERE profile_id=$1 AND id=ANY($2::text[])", self.profile_id, ids
+            "SELECT id,embedding::text AS vector FROM flick.nodes "
+            "WHERE profile_id=$1 AND id=ANY($2::text[])",
+            self.profile_id,
+            ids,
         )
         return {r["id"]: np.asarray(json.loads(r["vector"])) for r in rows}
 
