@@ -113,7 +113,7 @@ Deviating from any of these requires editing this document first.
 | SW-13 | Every provider and service is lazily constructed and degrades to a correctly-shaped placeholder. |
 | SW-14 | TimescaleDB is the telemetry sink and is **never on the critical path**. |
 | SW-15 | The spectator relay connection is **outbound only**; nothing from it enters the pipeline. |
-| SW-16 | A Local Mode switch forces the fully-offline chain. The system must remain functional with it on. |
+| SW-16 | Provider failures automatically advance through configured fallbacks; static choices are visibly identified. |
 
 ### 2.5 Demo integrity
 
@@ -514,9 +514,9 @@ values for callers constructing GenerationConfig directly.
 - STT: `deepgram` → `faster_whisper` → `manual`
 - TTS: `cache` → `elevenlabs` → `piper` → `browser SpeechSynthesis`
 
-**The last link in every chain never touches the network.** The backend therefore boots and serves a complete, correctly-shaped turn with no API keys at all.
+The backend boots and offers explicitly marked fallback choices with no API keys. Browser speech uses the available browser voices, which may use a network service.
 
-**Local Mode** truncates every chain to its offline links, disables the spectator relay and routes telemetry to a local Postgres. Toggling requires no restart.
+Provider chains recover automatically. Piper requires an installed executable and voice model; otherwise speech continues through the browser. Automatic fallback does not guarantee that every operation stays on-device.
 
 ---
 
@@ -1091,7 +1091,7 @@ Context is rendered one fact per line:
 
 ## 12. Generation
 
-All calls go through `LLMProvider.complete(system, user, json_mode=...)` with the configured generation token allowance and timeout. Each generation stage has one 12 s deadline shared by all provider attempts, one transient retry and at most one JSON repair. Repair targets the provider that produced malformed model output; a static result never triggers repair. The 2048-token allowance leaves room for thinking and the complete JSON response; Gemini 3 uses low thinking and Gemini 2.5 Flash disables thinking. A second failure or the stage deadline falls to the offline placeholder.
+All calls go through `LLMProvider.complete(system, user, json_mode=...)` with the configured generation token allowance and timeout. Each generation stage has one 12 s deadline shared by all provider attempts, one transient retry and at most one JSON repair. Repair targets the provider that produced malformed model output; a static result never triggers repair. The 2048-token allowance leaves room for thinking and the complete JSON response; Gemini 3 uses low thinking and Gemini 2.5 Flash disables thinking. Failure or the stage deadline yields visibly marked static intents, or one reply containing the selected intent verbatim with empty grounding. Unused physical targets are disabled; Cancel remains on the last target. `conv.intents` and `conv.candidates` carry optional `source` (`generated` or `fallback`) and `fallback_reason` metadata, restored on reconnect.
 
 ### 12.1 Intent labels
 
@@ -1377,7 +1377,7 @@ class EmbeddingProvider(ABC):
 
 `registry.py` builds a `FallbackChain` per slot from env vars. Every provider is lazily constructed on first use and wrapped in a circuit breaker: three consecutive failures marks it unhealthy for 30 s and the chain skips it. An explicit rate-limit response starts cooldown immediately for at least 30 s or the provider retry delay if longer. Transient LLM HTTP 500/502/503/504 and transport failures permit one delayed retry per stage when the remaining deadline allows it; a failed or skipped retry also starts immediate cooldown. Every subsequent request receives only the remaining budget. Completion provenance is request-specific, including explicit static fallback and failure reasons. Health is reported in `sys.status`.
 
-The last link in every chain is local, offline and never fails. That is what makes SW-13 real: the backend boots and serves a complete turn with no API keys, so frontend and graph work proceed while credentials are being sorted out.
+The final links are explicit static generation, manual text input and browser speech. The backend can boot and complete a turn without API keys; browser speech availability depends on the browser and its voices. Embeddings fall back from local MiniLM to deterministic vectors.
 
 ---
 

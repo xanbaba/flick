@@ -112,7 +112,7 @@ async def test_keyboard_presses_complete_a_turn(tmp_path) -> None:
                 if orch.state == CANDIDATE_WAIT:
                     break
                 await asyncio.sleep(0.02)
-            _press(keyboard, "2")
+            _press(keyboard, "1")
 
         await asyncio.gather(orch.submit_utterance("how are you today"), press_when_waiting())
         assert orch.state == IDLE

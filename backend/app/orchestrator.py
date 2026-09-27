@@ -17,13 +17,12 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import json
 import time
 import uuid
 from collections.abc import Awaitable, Callable
 
 from backend.app.services.cost import CostTracker
-from backend.app.services.generation import GenerationService
+from backend.app.services.generation import CandidateResult, GenerationService, IntentResult
 from backend.app.services.graph import EdgeRef, GraphService
 from backend.app.services.interfaces import (
     ExtractionServiceProtocol,
@@ -37,8 +36,6 @@ from backend.app.services.speech import SpeechService
 from backend.app.services.voice import VoiceService
 from backend.app.services.worker import MemoryWorker, run_memory
 from backend.providers.base import Transcript
-from backend.providers.llm_static import StaticLLMProvider
-from backend.providers.registry import get_llm_provider
 from inputs.base import InputSource
 from shared.bus import Publisher
 from shared.config import AppConfig
@@ -61,11 +58,6 @@ SPELLER_WAIT = "SPELLER_WAIT"
 
 _WAIT_STATES = {INTENT_WAIT, CANDIDATE_WAIT, SPELLER_WAIT}
 _FALLBACK_LABELS = ["Yes", "No", "Tell me more", "Not now"]
-_FALLBACK_CANDIDATES = [
-    "Yes.",
-    "I am not sure about that.",
-    "Can you say a little more about what you mean?",
-]
 NO_SELECTION_MESSAGE = "No selection — listening again"
 
 Broadcast = Callable[[str, dict[str, object]], Awaitable[None]]
@@ -121,6 +113,7 @@ class Orchestrator:
         self.mode = "intent"
         self._labels: list[str] = []
         self._round = "intent"
+        self._generation_metadata: dict[str, dict[str, object]] = {}
         self._utterance = ""
         self._intent = ""
         self._turn_id = ""
@@ -229,7 +222,16 @@ class Orchestrator:
         """Restore the current choices without starting a new selection trial."""
         events: list[tuple[str, dict[str, object]]] = []
         if self.state == INTENT_WAIT:
-            events.append(("conv.intents", {"trial_id": self.trial_id, "labels": self._labels}))
+            events.append(
+                (
+                    "conv.intents",
+                    {
+                        "trial_id": self.trial_id,
+                        "labels": self._labels,
+                        **self._generation_metadata.get("intent", {}),
+                    },
+                )
+            )
         elif self.state == CANDIDATE_WAIT:
             events.append(
                 (
@@ -238,6 +240,7 @@ class Orchestrator:
                         "trial_id": self.trial_id,
                         "candidates": self._labels,
                         "grounding": self._grounding_ids,
+                        **self._generation_metadata.get("candidate", {}),
                     },
                 )
             )
@@ -401,6 +404,7 @@ class Orchestrator:
                 "candidates": labels,
                 "grounding": grounding or [],
             }
+        payload.update(self._generation_metadata.get(round_name, {}))
         await self._broadcast(event, payload)
         await self._transition(wait_state, self.trial_id)
         try:
@@ -515,31 +519,21 @@ class Orchestrator:
 
     async def _intent_labels(self) -> list[str]:
         n_semantic = min(self.config.generation.n_intents, self.input.n_targets - 1)
-        labels: list[str] = []
-        if self.generation is not None:
-            try:
-                labels = await asyncio.wait_for(
-                    self.generation.generate_intents(
-                        self._context,
-                        self._partner_name,
-                        self._partner_relationship,
-                        self._utterance,
-                    ),
-                    timeout=self.config.generation.timeout_s,
-                )
-            except Exception as exc:
-                logger.warning(
-                    "orchestrator.intent_gen_fell_through",
-                    error=str(exc) or type(exc).__name__,
-                    error_type=type(exc).__name__,
-                    timeout_s=self.config.generation.timeout_s,
-                )
-                labels = []
-            if len(labels) < n_semantic:
-                labels = _FALLBACK_LABELS[:n_semantic]
-        if len(labels) < n_semantic:
-            labels = await self._offline_json_list("labels", n_semantic, _FALLBACK_LABELS)
-        return self._with_cancel(labels[:n_semantic])
+        try:
+            generation = self.generation or GenerationService(config=self.config.generation)
+            result = await generation.generate_intent_result(
+                self._context, self._partner_name, self._partner_relationship, self._utterance
+            )
+        except Exception as exc:
+            logger.warning("orchestrator.intent_gen_fell_through", error_type=type(exc).__name__)
+            result = IntentResult(
+                labels=_FALLBACK_LABELS, source="fallback", fallback_reason="provider_error"
+            )
+        self._generation_metadata["intent"] = {
+            "source": result.source,
+            "fallback_reason": result.fallback_reason,
+        }
+        return self._with_cancel(result.labels[:n_semantic])
 
     def _with_cancel(self, labels: list[str]) -> list[str]:
         """Keep Cancel on the last physical target in every conversation round."""
@@ -548,72 +542,33 @@ class Orchestrator:
         return semantic + [""] * (available - len(semantic)) + ["Cancel"]
 
     async def _candidates(self) -> tuple[list[str], list[str]]:
-        n = self.config.generation.n_candidates
-        if self.generation is not None:
-            try:
-                result = await asyncio.wait_for(
-                    self.generation.generate_candidates(
-                        user_name=self._user_name,
-                        context=self._context,
-                        context_node_ids=self._context_node_ids,
-                        partner_name=self._partner_name,
-                        partner_relationship=self._partner_relationship,
-                        utterance=self._utterance,
-                        intent=self._intent,
-                    ),
-                    timeout=self.config.generation.timeout_s,
-                )
-                candidates, grounding = result.candidates, result.grounding
-            except Exception as exc:
-                logger.warning(
-                    "orchestrator.candidate_gen_fell_through",
-                    error=str(exc) or type(exc).__name__,
-                    error_type=type(exc).__name__,
-                    timeout_s=self.config.generation.timeout_s,
-                )
-                candidates, grounding = [], []
-            if len(candidates) >= n:
-                return self._with_cancel(candidates[:n]), grounding
-            fallback = await GenerationService(
-                llm=StaticLLMProvider(), config=self.config.generation
-            ).generate_candidates(
-                self._user_name,
-                self._context,
-                self._context_node_ids,
-                self._partner_name,
-                self._partner_relationship,
-                self._utterance,
-                self._intent,
-            )
-            return self._with_cancel(fallback.candidates[:n]), fallback.grounding
-        candidates = await self._offline_json_list("candidates", n, _FALLBACK_CANDIDATES)
-        return self._with_cancel(candidates[:n]), []
-
-    async def _offline_json_list(self, key: str, n: int, fallback: list[str]) -> list[str]:
-        """Call the LLM chain. The static link returns ``{}``, which is not
-        a usable list, so the local placeholder is what actually renders.
-        """
         try:
-            raw = await asyncio.wait_for(
-                get_llm_provider().complete(
-                    key,
-                    self._utterance,
-                    json_mode=True,
-                    timeout=self.config.generation.timeout_s,
-                ),
-                timeout=self.config.generation.timeout_s,
+            generation = self.generation or GenerationService(config=self.config.generation)
+            result = await generation.generate_candidates(
+                user_name=self._user_name,
+                context=self._context,
+                context_node_ids=self._context_node_ids,
+                partner_name=self._partner_name,
+                partner_relationship=self._partner_relationship,
+                utterance=self._utterance,
+                intent=self._intent,
             )
-            parsed = json.loads(raw)
-            values = parsed.get(key) if isinstance(parsed, dict) else None
-            if isinstance(values, list) and len(values) >= n:
-                return [str(item) for item in values[:n]]
         except Exception as exc:
-            logger.warning(
-                "orchestrator.offline_llm_unusable",
-                error=str(exc) or type(exc).__name__,
-                error_type=type(exc).__name__,
+            logger.warning("orchestrator.candidate_gen_fell_through", error_type=type(exc).__name__)
+            result = CandidateResult(
+                candidates=[self._intent],
+                grounding=[],
+                source="fallback",
+                fallback_reason="provider_error",
             )
-        return fallback[:n]
+        self._generation_metadata["candidate"] = {
+            "source": result.source,
+            "fallback_reason": result.fallback_reason,
+        }
+        grounding = [node_id for node_id in result.grounding if node_id in self._context_node_ids]
+        return self._with_cancel(
+            result.candidates[: self.config.generation.n_candidates]
+        ), grounding
 
     async def _speller_loop(self) -> None:
         assert self.speller is not None

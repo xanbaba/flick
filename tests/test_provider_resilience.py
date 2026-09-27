@@ -10,13 +10,14 @@ import httpx
 import pytest
 from structlog.testing import capture_logs
 
+from backend.providers import registry
 from backend.providers.base import LLMProvider
 from backend.providers.llm_gemini import GeminiLLMProvider
 from backend.providers.llm_openai_compat import OpenAICompatLLMProvider
 from backend.providers.llm_static import StaticLLMProvider
 from backend.providers.registry import CircuitBreaker
 from backend.providers.resilience import Completion, LLMStage
-from shared.config import load_config
+from shared.config import EnvSettings, load_config
 
 
 class Clock:
@@ -217,3 +218,83 @@ async def test_deadline_is_distinct_from_external_cancellation(
     assert result.fallback_reason == "deadline_exceeded"
     assert not any(log.get("reason") == "caller_cancelled" for log in logs)
     assert "private-" not in json.dumps(logs)
+
+
+@pytest.mark.parametrize("status", [500, 502, 503, 504, None])
+async def test_transient_retry_budget_is_shared_across_all_configured_links(
+    monkeypatch: pytest.MonkeyPatch, status: int | None
+) -> None:
+    clock = Clock()
+    hosts: list[str] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        hosts.append(request.url.host)
+        if status is None:
+            raise httpx.ConnectError("private transport diagnostic", request=request)
+        return httpx.Response(status)
+
+    transport(monkeypatch, respond)
+    chain = registry._build_llm_chain(
+        EnvSettings(
+            _env_file=None,
+            gemini_api_key="test",
+            openai_compat_base_url="https://alternate.test",
+            openai_compat_model="test",
+            do_gradient_base_url="https://gradient.test",
+            do_gradient_model="test",
+        )
+    )
+    request_stage = stage(clock, chain._links)
+    with capture_logs() as logs:
+        result = await run(request_stage)
+    assert result.value is None
+    assert hosts == ["generativelanguage.googleapis.com"] * 2 + ["alternate.test", "gradient.test"]
+    assert clock.sleeps == [0.75]
+    assert "private" not in json.dumps(logs)
+    assert not any(log["event"] == "llm.json_repair" for log in logs)
+
+
+async def test_transient_cooldown_skips_calls_then_recovers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = Clock()
+    calls = []
+    monkeypatch.setattr(registry.time, "monotonic", lambda: clock.now)
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return httpx.Response(503) if len(calls) <= 2 else gemini_response("valid")
+
+    transport(monkeypatch, respond)
+    links = [GeminiLLMProvider("key", "test"), StaticLLMProvider()]
+    breakers = [CircuitBreaker() for _ in links]
+
+    def request_stage() -> LLMStage:
+        return LLMStage(links, breakers, load_config().generation, "recovery", sleep=clock.sleep)
+
+    assert (await run(request_stage())).value is None
+    assert len(calls) == 2
+    clock.now += 29
+    assert (await run(request_stage())).fallback_reason == "provider_cooldown"
+    assert len(calls) == 2
+    clock.now += 2
+    assert (await run(request_stage())).value == "valid"
+    assert len(calls) == 3
+
+
+async def test_malformed_output_has_one_repair_and_remaining_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = Clock()
+    requests = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        clock.now += 6
+        return gemini_response("malformed")
+
+    transport(monkeypatch, respond)
+    result = await run(stage(clock, [GeminiLLMProvider("key", "test"), StaticLLMProvider()]))
+    assert len(requests) == 2
+    assert requests[1].extensions["timeout"]["read"] == 6
+    assert result.value is None and result.fallback_reason == "deadline_exceeded"

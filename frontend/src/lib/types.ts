@@ -118,8 +118,8 @@ export interface WsPayloads {
   'bci.scores': Omit<TargetScores, 'type' | 'ts'>;
   'input.selection': { target_idx: number; label: string; round: 'intent' | 'candidate' | 'speller'; confidence: number; source: string };
   'conv.transcript': { speaker: string; text: string; partner_id: string | null; partner_name: string | null; confidence: number };
-  'conv.intents': { trial_id: string; labels: string[] };
-  'conv.candidates': { trial_id: string; candidates: string[]; grounding: string[] };
+  'conv.intents': { trial_id: string; labels: string[]; source?: 'generated' | 'fallback'; fallback_reason?: string | null };
+  'conv.candidates': { trial_id: string; candidates: string[]; grounding: string[]; source?: 'generated' | 'fallback'; fallback_reason?: string | null };
   'conv.spoken': {
     text: string
     voice: 'cache' | 'elevenlabs' | 'piper' | 'browser'

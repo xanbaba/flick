@@ -38,7 +38,7 @@ def test_static_onboarding_seeds_fixture_and_blooms_in_batches(tmp_path: Path) -
     assert sum(len(batch.nodes) for batch in batches) == graph.node_count()
 
 
-def test_seeded_turn_yields_three_grounded_sentences(tmp_path: Path) -> None:
+def test_seeded_turn_fallback_preserves_selected_intent(tmp_path: Path) -> None:
     graph = GraphService(db_path=tmp_path / "kuzu", embedding_dim=384)
     graph.seed_from_json(load_fixture())
     retrieval = RetrievalService(graph)
@@ -60,7 +60,8 @@ def test_seeded_turn_yields_three_grounded_sentences(tmp_path: Path) -> None:
             intent="Talk about Rosie",
         )
     )
-    known = {node.id for node in graph.snapshot()[0]}
-    assert len(candidates.candidates) == 3
-    assert candidates.grounding
-    assert set(candidates.grounding) <= known
+    assert result.nodes and result.context_text
+    assert candidates.candidates == ["Talk about Rosie"]
+    assert candidates.grounding == []
+    assert candidates.source == "fallback"
+    graph.close()

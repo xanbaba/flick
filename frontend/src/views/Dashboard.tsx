@@ -30,6 +30,7 @@ export function Dashboard({
   round,
   selectedIdx,
   spoken,
+  fallback,
   grounding,
   analytics,
   flows,
@@ -49,6 +50,7 @@ export function Dashboard({
   round: 'intent' | 'candidate' | 'speller' | null
   selectedIdx: number | null
   spoken: WsPayloads['conv.spoken'] | null
+  fallback: boolean
   grounding: string[]
   analytics: AnalyticsSummary | null
   flows: WsPayloads['privacy.flow'][]
@@ -88,6 +90,7 @@ export function Dashboard({
         round={round}
         selectedIdx={selectedIdx}
         spoken={spoken}
+        fallback={fallback}
         grounding={grounding}
       />
       {narrow && (

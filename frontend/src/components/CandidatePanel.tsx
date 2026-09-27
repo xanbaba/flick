@@ -27,6 +27,7 @@ export function CandidatePanel({
   round,
   selectedIdx,
   spoken,
+  fallback,
   grounding,
 }: {
   socket: FlickSocket | null
@@ -36,6 +37,7 @@ export function CandidatePanel({
   round: 'intent' | 'candidate' | 'speller' | null
   selectedIdx: number | null
   spoken: WsPayloads['conv.spoken'] | null
+  fallback: boolean
   grounding: string[]
 }) {
   const [prompt, setPrompt] = useState('')
@@ -83,6 +85,13 @@ export function CandidatePanel({
         </div>
       </div>
 
+      {showTiles && fallback && (
+        <p role="status" className="text-sm text-muted">
+          {round === 'candidate'
+            ? 'Fallback reply: your selected intent, unchanged.'
+            : 'Fallback choices: generation is unavailable.'}
+        </p>
+      )}
       <div className="flex min-h-[118px] items-stretch gap-2.5">
         {!showTiles && !GENERATING.has(fsm) && !speaking && (
           <div className="flex flex-1 flex-col justify-center gap-2 rounded-lg border border-dashed border-[oklch(0.33_0.012_160)] px-4 py-3.5">

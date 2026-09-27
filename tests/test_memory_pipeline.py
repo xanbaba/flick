@@ -45,6 +45,8 @@ class ConversationProvider(LLMProvider):
         self.fail_seed = False
         self.fail_learning = False
         self.fail_candidates = False
+        self.fail_intents = False
+        self.first_intent = "Sit comfortably"
         self.learned = False
         self.seed_delay = 0.0
 
@@ -117,9 +119,13 @@ class ConversationProvider(LLMProvider):
                 }
             )
         if "Exactly 4 labels" in user:
+            if self.fail_intents:
+                return "malformed test output"
             if "You now have mint tea." in user:
                 return '{"labels":["Have tea","Not now","Which tea","Thanks Sam"]}'
-            return '{"labels":["Sit comfortably","Not now","Tell me more","Thanks Sam"]}'
+            return json.dumps(
+                {"labels": [self.first_intent, "Not now", "Tell me more", "Thanks Sam"]}
+            )
         if self.fail_candidates:
             raise TimeoutError("test candidate provider unavailable")
         tea = re.search(r"\[([^]]+)\] You now have mint tea", user)
@@ -192,7 +198,9 @@ def turn(client: TestClient, app: FastAPI, ws: WebSocketTestSession, utterance: 
         wait_for_state(app, "INTENT_WAIT")
         ws.send_json({"type": "client.key_press", "ts": time.time(), "key": "1"})
         wait_for_state(app, "CANDIDATE_WAIT")
-        ws.send_json({"type": "client.key_press", "ts": time.time(), "key": "2"})
+        choices = receive_kind(ws, "conv.candidates")
+        key = "1" if choices["source"] == "fallback" else "2"
+        ws.send_json({"type": "client.key_press", "ts": time.time(), "key": key})
         while True:
             message = ws.receive_json()
             if message["type"] == "conv.spoken":
@@ -343,7 +351,7 @@ def test_writeback_failure_returns_idle_without_bloom(application: ApplicationFa
         assert state["state"] == "IDLE" and "memory update unavailable" in state["detail"]
 
 
-def test_candidate_provider_failure_keeps_grounded_fallback(
+def test_candidate_provider_failure_preserves_intent_without_grounding(
     application: ApplicationFactory,
 ) -> None:
     create, llm, _ = application
@@ -355,18 +363,26 @@ def test_candidate_provider_failure_keeps_grounded_fallback(
             == 200
         )
         llm.fail_candidates = True
+        llm.first_intent = "call Elena"
         llm.learned = True
         turn(client, app, ws, "Sam here. Would you like your chair?")
         candidates = [p for kind, p in events if kind == "conv.candidates"][-1]
-        assert candidates["grounding"]
-        assert set(candidates["grounding"]) <= {"user", "sam", "chair"}
-        assert len(candidates["candidates"]) == 5
-        assert candidates["candidates"][3:] == ["", "Cancel"]
+        assert candidates["grounding"] == []
+        assert candidates["candidates"] == ["call Elena", "", "", "", "Cancel"]
+        assert candidates["source"] == "fallback"
+        assert candidates["fallback_reason"] == "provider_unavailable"
+        spoken = [p for kind, p in events if kind == "conv.spoken"][-1]
+        assert spoken["text"] == "call Elena"
 
 
 @pytest.mark.parametrize("state", ["INTENT_WAIT", "CANDIDATE_WAIT"])
-def test_reconnect_restores_active_choices(application: ApplicationFactory, state: str) -> None:
-    create, _, _ = application
+@pytest.mark.parametrize("fallback", [False, True])
+def test_reconnect_restores_active_choices(
+    application: ApplicationFactory, state: str, fallback: bool
+) -> None:
+    create, llm, _ = application
+    llm.fail_intents = fallback
+    llm.fail_candidates = fallback
     app = create()
     with TestClient(app) as client, ThreadPoolExecutor(max_workers=1) as executor:
         client.post("/api/onboarding/seed", json={"name": "Alex", "bio": "Alex"})
@@ -383,8 +399,12 @@ def test_reconnect_restores_active_choices(application: ApplicationFactory, stat
             choices = next(message["payload"] for message in messages if message["type"] == kind)
             assert choices["trial_id"] == trial_id
             assert (choices.get("labels") or choices["candidates"])[-1] == "Cancel"
+            assert choices["source"] == ("fallback" if fallback else "generated")
+            assert bool(choices["fallback_reason"]) == fallback
             if state == "CANDIDATE_WAIT":
-                assert set(choices["grounding"]) == {"user", "chair"}
+                assert set(choices["grounding"]) == (set() if fallback else {"user", "chair"})
+                if fallback:
+                    assert choices["candidates"] == ["Yes", "", "", "", "Cancel"]
             assert messages[-1]["payload"]["state"] == state
             restored.send_json({"type": "client.key_press", "ts": time.time(), "key": "5"})
             if state == "CANDIDATE_WAIT":
