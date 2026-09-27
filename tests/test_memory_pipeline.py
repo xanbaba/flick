@@ -498,3 +498,12 @@ def test_status_exposes_configured_decision_values(application: ApplicationFacto
         assert status["decision"]["rho_threshold"] == 0.61
         assert status["decision"]["dwell_windows"] == 7
         assert status["cancel_idx"] == 4
+
+
+def test_manual_local_mode_is_removed(application: ApplicationFactory) -> None:
+    create, _, _ = application
+    app = create()
+    with TestClient(app) as client, client.websocket_connect("/ws") as ws:
+        assert "local_mode" not in receive_kind(ws, "sys.status")
+        assert client.post("/api/privacy/local_mode", json={"enabled": True}).status_code == 404
+        assert client.get("/api/privacy/flows").status_code == 200

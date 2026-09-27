@@ -25,7 +25,6 @@ export const api = {
   onboardingStatus: () => request<OnboardingStatus>('GET', '/api/onboarding/status'),
   seed: (bio: string, name: string) => request<SeedResult>('POST', '/api/onboarding/seed', { bio, name }),
   utterance: (text: string) => request<{ state: string; trial_id: string | null }>('POST', '/api/utterance', { text }),
-  localMode: (enabled: boolean) => request<{ local_mode: boolean }>('POST', '/api/privacy/local_mode', { enabled }),
   purge: (scope: string) => request<{ scope: string }>('POST', '/api/privacy/purge', { scope }),
   spectatorLink: () => request<{ url: string; connected_viewers: number }>('GET', '/api/spectator/link'),
 }

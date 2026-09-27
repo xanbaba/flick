@@ -72,10 +72,6 @@ class CuedBlockBody(BaseModel):
     train_etrca: bool = False
 
 
-class LocalModeBody(BaseModel):
-    enabled: bool
-
-
 class PurgeBody(BaseModel):
     scope: str
 
@@ -107,7 +103,6 @@ def create_app() -> FastAPI:
         cache_first=config.voice.cache_first,
         voice_id=settings.env.elevenlabs_voice_id or None,
     )
-    flags = {"local_mode": config.privacy.local_mode or settings.env.local_mode}
     input_box: dict[str, InputSource] = {
         "source": build_input(config.input.adapter, config.mode.targets)
     }
@@ -147,7 +142,6 @@ def create_app() -> FastAPI:
                 source.status().get("connected", source.status().get("started", False))
             ),
             "replay": source.name == "replay",
-            "local_mode": flags["local_mode"],
             "profile": config.stimulus.profile,
             "measured_refresh_hz": None,
             "providers": health_snapshot(),
@@ -226,7 +220,6 @@ def create_app() -> FastAPI:
     app.state.telemetry = telemetry
     app.state.analytics = analytics
     app.state.spectator = spectator
-    app.state.flags = flags
 
     @app.get("/api/health")
     async def health() -> dict[str, object]:
@@ -315,11 +308,6 @@ def create_app() -> FastAPI:
     @app.get("/api/analytics/summary")
     async def analytics_summary() -> dict[str, object]:
         return analytics.summary().model_dump()
-
-    @app.post("/api/privacy/local_mode")
-    async def local_mode(body: LocalModeBody) -> dict[str, bool]:
-        flags["local_mode"] = body.enabled
-        return {"local_mode": body.enabled}
 
     @app.get("/api/privacy/flows")
     async def privacy_flows() -> dict[str, object]:

@@ -78,11 +78,6 @@ export function StatusBar({ conn, status }: { conn: ConnState; status: SysStatus
         <span>{status ? status.telemetry_dropped : '—'}</span>
       </span>
       <span className="flex-1" />
-      {status?.local_mode && (
-        <span className="rounded-md bg-accent px-3 py-1.5 font-bold tracking-widest text-[oklch(0.17_0.03_158)]">
-          LOCAL MODE
-        </span>
-      )}
       {status?.input_badge && (
         <span
           role="status"
