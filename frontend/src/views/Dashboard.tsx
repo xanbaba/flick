@@ -9,7 +9,6 @@ import { SessionAnalytics } from '../components/SessionAnalytics'
 import { SpectatorQR } from '../components/SpectatorQR'
 import { TargetScores } from '../components/TargetScores'
 import { Transcript, type TranscriptLine } from '../components/Transcript'
-import { api } from '../lib/api'
 import type { MemoryBrain } from '../lib/brain'
 import type { Streams } from '../lib/streams'
 import type { AnalyticsSummary, FsmState, SysStatusPayload, WsPayloads } from '../lib/types'
@@ -31,6 +30,7 @@ export function Dashboard({
   round,
   selectedIdx,
   spoken,
+  fallback,
   grounding,
   analytics,
   flows,
@@ -50,6 +50,7 @@ export function Dashboard({
   round: 'intent' | 'candidate' | 'speller' | null
   selectedIdx: number | null
   spoken: WsPayloads['conv.spoken'] | null
+  fallback: boolean
   grounding: string[]
   analytics: AnalyticsSummary | null
   flows: WsPayloads['privacy.flow'][]
@@ -89,6 +90,7 @@ export function Dashboard({
         round={round}
         selectedIdx={selectedIdx}
         spoken={spoken}
+        fallback={fallback}
         grounding={grounding}
       />
       {narrow && (
@@ -109,12 +111,8 @@ export function Dashboard({
         {show('analytics') && <SessionAnalytics summary={analytics} />}
         {show('privacy') && (
           <PrivacyPanel
-            localMode={Boolean(status?.local_mode)}
             flows={flows}
             cost={cost}
-            onLocalMode={(enabled) => {
-              void api.localMode(enabled)
-            }}
           />
         )}
         {show('spectator') && <SpectatorQR url={spectator.url} viewers={spectator.connected_viewers} />}

@@ -16,6 +16,29 @@ class RateLimitError(RuntimeError):
         self.quota_ids = quota_ids
 
 
+def provider_error_code(response: httpx.Response | None) -> str | None:
+    """Allowlisted diagnostic codes only; never echo a provider's error message."""
+    if response is None:
+        return None
+    try:
+        payload = response.json()
+    except ValueError:
+        return None
+    error = payload.get("error") if isinstance(payload, dict) else None
+    code = error.get("status") if isinstance(error, dict) else None
+    allowed = {
+        "UNAVAILABLE",
+        "RESOURCE_EXHAUSTED",
+        "INTERNAL",
+        "DEADLINE_EXCEEDED",
+        "INVALID_ARGUMENT",
+        "PERMISSION_DENIED",
+        "UNAUTHENTICATED",
+        "NOT_FOUND",
+    }
+    return code if isinstance(code, str) and code in allowed else None
+
+
 def _seconds(value: object) -> float | None:
     if not isinstance(value, str):
         return None

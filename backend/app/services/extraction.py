@@ -11,7 +11,6 @@ with near-identical nodes within five turns."
 
 from __future__ import annotations
 
-import asyncio
 import json
 from pathlib import Path
 
@@ -22,6 +21,7 @@ from backend.app.services.graph import NODE_COLUMN_TYPES, REL_PAIRS, GraphServic
 from backend.app.services.worker import MemoryWorker, run_memory
 from backend.providers.base import EmbeddingProvider, LLMProvider
 from backend.providers.registry import get_embedding_provider, get_llm_provider
+from backend.providers.resilience import stage_for
 from shared.config import ExtractionConfig, GenerationConfig, get_settings
 
 PROMPTS_DIR = Path(__file__).resolve().parents[2] / "prompts"
@@ -119,14 +119,16 @@ class ExtractionService:
             utterance=utterance,
             spoken_text=spoken_text,
         )
-        async with asyncio.timeout(self._generation_config.timeout_s):
-            raw = await self._complete(prompt)
-            parsed = self._parse(raw)
-            if parsed is None:
-                raw_retry = await self._complete(self._repair_prompt(prompt, raw))
-                parsed = self._parse(raw_retry)
+        result = await stage_for(self._llm, self._generation_config, "extraction").generate(
+            _GENERIC_SYSTEM_PROMPT,
+            prompt,
+            self._parse,
+            self._repair_prompt,
+            max_tokens=self._generation_config.max_tokens,
+        )
+        parsed = result.value
         if parsed is None:
-            raise ValueError("Fact extraction returned malformed data after repair")
+            raise RuntimeError(f"Fact extraction unavailable: {result.fallback_reason}")
 
         nodes, edges = parsed
         return await run_memory(self._worker, self._commit_atomic, nodes, edges)
@@ -239,15 +241,6 @@ class ExtractionService:
     # ---------------------------------------------------------------- #
     # LLM plumbing (section 12: strict JSON, one repair retry)
     # ---------------------------------------------------------------- #
-
-    async def _complete(self, user_prompt: str) -> str:
-        return await self._llm.complete(
-            _GENERIC_SYSTEM_PROMPT,
-            user_prompt,
-            json_mode=True,
-            max_tokens=self._generation_config.max_tokens,
-            timeout=self._generation_config.timeout_s,
-        )
 
     @staticmethod
     def _repair_prompt(original_prompt: str, bad_response: str) -> str:

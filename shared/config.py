@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_CONFIG_PATH = Path("config.yaml")
@@ -125,6 +125,10 @@ class GenerationConfig(BaseModel):
     n_candidates: int
     max_tokens: int
     timeout_s: float
+    transient_retries: int = Field(default=1, ge=0, le=1)
+    retry_delay_s: float = Field(default=0.5, ge=0)
+    retry_jitter_s: float = Field(default=0.25, ge=0)
+    min_attempt_budget_s: float = Field(default=2.0, gt=0)
 
 
 class ExtractionConfig(BaseModel):
@@ -170,7 +174,6 @@ class PriceTable(BaseModel):
 
 
 class PrivacyConfig(BaseModel):
-    local_mode: bool
     show_costs: bool
     price_table: PriceTable
 
@@ -248,9 +251,8 @@ class EnvSettings(BaseSettings):
     emotiv_client_secret: str = ""
 
     demo_replay: bool = False
-    local_mode: bool = False
 
-    @field_validator("demo_replay", "local_mode", mode="before")
+    @field_validator("demo_replay", mode="before")
     @classmethod
     def _blank_env_value_means_false(cls, value: object) -> object:
         """.env.example ships every variable empty (AGENTS.md non-negotiable #1).

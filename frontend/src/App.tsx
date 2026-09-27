@@ -24,6 +24,7 @@ interface Dash {
   round: 'intent' | 'candidate' | 'speller' | null
   selectedIdx: number | null
   spoken: WsPayloads['conv.spoken'] | null
+  fallback: boolean
   grounding: string[]
   analytics: AnalyticsSummary | null
   flows: WsPayloads['privacy.flow'][]
@@ -44,6 +45,7 @@ const initial: Dash = {
   round: null,
   selectedIdx: null,
   spoken: null,
+  fallback: false,
   grounding: [],
   analytics: null,
   flows: [],
@@ -169,6 +171,7 @@ export function App() {
           round={dash.round}
           selectedIdx={dash.selectedIdx}
           spoken={dash.spoken}
+          fallback={dash.fallback}
           grounding={dash.grounding}
           analytics={dash.analytics}
           flows={dash.flows}
@@ -197,11 +200,20 @@ function reduce(d: Dash, msg: WsMessage): Dash {
         transcript: [{ who: msg.payload.partner_name || msg.payload.speaker, text: msg.payload.text }, ...d.transcript].slice(0, 8),
       }
     case 'conv.intents':
-      return { ...d, labels: msg.payload.labels, round: 'intent', selectedIdx: null, spoken: null }
+      return {
+        ...d,
+        labels: msg.payload.labels,
+        grounding: [],
+        fallback: msg.payload.source === 'fallback',
+        round: 'intent',
+        selectedIdx: null,
+        spoken: null,
+      }
     case 'conv.candidates':
       return {
         ...d,
         labels: msg.payload.candidates,
+        fallback: msg.payload.source === 'fallback',
         round: 'candidate',
         grounding: msg.payload.grounding,
         selectedIdx: null,

@@ -7,7 +7,7 @@ asyncpg. If the database is unreachable, the consumer logs once per
 30 s and keeps draining into the void so the queue never backs up.
 
 SW-14: TimescaleDB is never on the critical path. With no
-TIMESCALE_DSN configured (Local Mode, or just an empty .env), the
+TIMESCALE_DSN configured (for example, with an empty .env), the
 consumer drains and discards every batch -- emit() behaves
 identically either way, which is what makes this safe to call from
 everywhere without an early-boot ordering dependency on the database.
@@ -89,7 +89,7 @@ class TelemetryService:
 
     async def _flush(self, batch: dict[str, list[dict[str, Any]]]) -> None:
         if not self._dsn:
-            return  # no DSN configured (Local Mode, or empty .env): best-effort, drop
+            return  # no DSN configured (for example, empty .env): best-effort, drop
         try:
             pool = await self._get_pool()
         except Exception as exc:

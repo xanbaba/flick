@@ -120,9 +120,11 @@ async def test_generation_timeout_is_reported_without_a_second_cloud_request(
     await orch._ground()
     with capture_logs() as logs:
         labels = await orch._intent_labels()
-    assert labels == ["Yes", "No", "Tell me more", "Not now", "Cancel"]
+    assert labels == ["Yes", "Not now", "Tell me more", "Ask me", "Cancel"]
     assert llm.complete.await_count == 1
-    failure = next(log for log in logs if log["event"] == "orchestrator.intent_gen_fell_through")
-    assert failure["error_type"] == "TimeoutError"
-    assert failure["error"]
-    assert failure["timeout_s"] == 0.01
+    failure = next(log for log in logs if log["event"] == "llm.stage_fallback")
+    assert failure["reason"] == "deadline_exceeded"
+    assert orch._generation_metadata["intent"] == {
+        "source": "fallback",
+        "fallback_reason": "deadline_exceeded",
+    }

@@ -15,11 +15,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel
 
 from backend.providers.base import LLMProvider
 from backend.providers.registry import get_llm_provider
+from backend.providers.resilience import stage_for
 from shared.config import GenerationConfig, get_settings
 
 PROMPTS_DIR = Path(__file__).resolve().parents[2] / "prompts"
@@ -33,8 +35,14 @@ _GENERIC_SYSTEM_PROMPT = (
 
 # Fallback intent labels satisfy section 12.1's own range rule (one
 # affirmative, one negative/deflecting, one that asks something back)
-# so a fully offline turn still looks like a real turn, not an error.
+# while the dashboard explicitly marks them as fallback choices.
 _FALLBACK_INTENTS: tuple[str, str, str, str] = ("Yes", "Not now", "Tell me more", "Ask me")
+
+
+class IntentResult(BaseModel):
+    labels: list[str]
+    source: Literal["generated", "fallback"] = "generated"
+    fallback_reason: str | None = None
 
 
 class CandidateResult(BaseModel):
@@ -46,6 +54,8 @@ class CandidateResult(BaseModel):
 
     candidates: list[str]
     grounding: list[str]
+    source: Literal["generated", "fallback"] = "generated"
+    fallback_reason: str | None = None
 
 
 def _load_prompt(filename: str) -> str:
@@ -99,6 +109,14 @@ class GenerationService:
         partner_relationship: str,
         utterance: str,
     ) -> list[str]:
+        result = await self.generate_intent_result(
+            context, partner_name, partner_relationship, utterance
+        )
+        return result.labels
+
+    async def generate_intent_result(
+        self, context: str, partner_name: str, partner_relationship: str, utterance: str
+    ) -> IntentResult:
         prompt = _fill(
             self._intent_template,
             context=context,
@@ -106,17 +124,20 @@ class GenerationService:
             partner_relationship=partner_relationship,
             utterance=utterance,
         )
-        raw = await self._complete(prompt)
-        labels = self._parse_intents(raw)
-        if labels is not None:
-            return labels
-
-        raw_retry = await self._complete(self._repair_prompt(prompt, raw))
-        labels = self._parse_intents(raw_retry)
-        if labels is not None:
-            return labels
-
-        return list(_FALLBACK_INTENTS[: self._config.n_intents])
+        result = await stage_for(self._llm, self._config, "intents").generate(
+            _GENERIC_SYSTEM_PROMPT,
+            prompt,
+            self._parse_intents,
+            self._repair_prompt,
+            max_tokens=self._config.max_tokens,
+        )
+        if result.value is not None:
+            return IntentResult(labels=result.value)
+        return IntentResult(
+            labels=list(_FALLBACK_INTENTS[: self._config.n_intents]),
+            source="fallback",
+            fallback_reason=result.fallback_reason,
+        )
 
     def _parse_intents(self, raw: str) -> list[str] | None:
         try:
@@ -171,17 +192,21 @@ class GenerationService:
         )
         valid_ids = set(context_node_ids)
 
-        raw = await self._complete(prompt)
-        result = self._parse_candidates(raw, valid_ids)
-        if result is not None:
-            return result
-
-        raw_retry = await self._complete(self._repair_prompt(prompt, raw))
-        result = self._parse_candidates(raw_retry, valid_ids)
-        if result is not None:
-            return result
-
-        return self._fallback_candidates(intent, context, context_node_ids)
+        result = await stage_for(self._llm, self._config, "candidates").generate(
+            _GENERIC_SYSTEM_PROMPT,
+            prompt,
+            lambda raw: self._parse_candidates(raw, valid_ids),
+            self._repair_prompt,
+            max_tokens=self._config.max_tokens,
+        )
+        if result.value is not None:
+            return result.value
+        return CandidateResult(
+            candidates=[intent],
+            grounding=[],
+            source="fallback",
+            fallback_reason=result.fallback_reason,
+        )
 
     def _parse_candidates(self, raw: str, valid_ids: set[str]) -> CandidateResult | None:
         try:
@@ -208,57 +233,9 @@ class GenerationService:
 
         return CandidateResult(candidates=cleaned, grounding=grounding)
 
-    def _fallback_candidates(
-        self, intent: str, context: str, context_node_ids: list[str]
-    ) -> CandidateResult:
-        """Offline placeholder (SW-13). When FACTS were supplied, the three
-
-        sentences are first-person restatements of those facts and the
-        grounding ids are the ones that were actually used, so a turn
-        with the static provider is still grounded. With no facts, the
-        sentences stay generic and grounding is empty.
-        """
-        facts = [
-            line.strip()[2:].strip()
-            for line in context.splitlines()
-            if line.strip().startswith("- ") and line.strip()[2:].strip()
-        ]
-        pairs = [(node_id, fact) for node_id, fact in zip(context_node_ids, facts, strict=False)]
-        pairs = [(node_id, fact) for node_id, fact in pairs if node_id and fact]
-        if not pairs:
-            intent_text = intent.strip() or "okay"
-            return CandidateResult(
-                candidates=[
-                    intent_text.capitalize() + ".",
-                    f"I mean {intent_text.lower()}, if that makes sense.",
-                    f"What I'm trying to say is {intent_text.lower()} right now.",
-                ],
-                grounding=[],
-            )
-
-        spoken = [_to_first_person(fact) for _, fact in pairs]
-        short = _short_clause(spoken[0])
-        medium = _finish(spoken[0])
-        if len(spoken) > 1:
-            longer = _finish(spoken[0]).rstrip(".") + ", and " + spoken[1].rstrip(".") + "."
-            grounding = [pairs[0][0], pairs[1][0]]
-        else:
-            longer = _finish(spoken[0]).rstrip(".") + ", and that is what I mean."
-            grounding = [pairs[0][0]]
-        return CandidateResult(candidates=[short, medium, longer], grounding=grounding)
-
     # ---------------------------------------------------------------- #
     # Shared plumbing
     # ---------------------------------------------------------------- #
-
-    async def _complete(self, user_prompt: str) -> str:
-        return await self._llm.complete(
-            _GENERIC_SYSTEM_PROMPT,
-            user_prompt,
-            json_mode=True,
-            max_tokens=self._config.max_tokens,
-            timeout=self._config.timeout_s,
-        )
 
     @staticmethod
     def _repair_prompt(original_prompt: str, bad_response: str) -> str:
@@ -270,37 +247,3 @@ class GenerationService:
             "JSON object, nothing else.\n\n"
             f"{original_prompt}"
         )
-
-
-def _to_first_person(fact: str) -> str:
-    """Facts are stored in second person ("You call her mija"). Spoken
-
-    sentences are first person. This is a placeholder rewrite for the
-    offline provider, not a general paraphraser.
-    """
-    text = fact.strip()
-    for src, dst in (
-        ("You're ", "I'm "),
-        ("You ", "I "),
-        ("Your ", "My "),
-        ("your ", "my "),
-        (" you ", " I "),
-    ):
-        text = text.replace(src, dst)
-    return text
-
-
-def _finish(text: str) -> str:
-    sentence = text.strip().rstrip(".")
-    return sentence + "."
-
-
-def _short_clause(text: str) -> str:
-    """First clause, capped at 8 words, never ending on a dangling word."""
-    clause = text.split(",")[0].split(".")[0].strip()
-    words = clause.split()[:8]
-    while words and words[-1].lower().strip(".") in {"not", "and", "or", "the", "a", "to", "of"}:
-        words.pop()
-    if not words:
-        words = text.split()[:4]
-    return " ".join(words).rstrip(".") + "."

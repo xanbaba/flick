@@ -6,7 +6,7 @@ from collections.abc import AsyncIterator
 from typing import Protocol
 
 from backend.app.services.extraction import ExtractionResult
-from backend.app.services.generation import CandidateResult
+from backend.app.services.generation import CandidateResult, IntentResult
 from backend.app.services.onboarding import BloomBatch
 from backend.app.services.partner import PartnerIdentification
 from backend.app.services.retrieval import RetrievalResult
@@ -23,9 +23,9 @@ class GenerationServiceProtocol(Protocol):
     instantiates a provider directly.
     """
 
-    async def generate_intents(
+    async def generate_intent_result(
         self, context: str, partner_name: str, partner_relationship: str, utterance: str
-    ) -> list[str]: ...
+    ) -> IntentResult: ...
 
     async def generate_candidates(
         self,
