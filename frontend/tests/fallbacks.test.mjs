@@ -27,10 +27,21 @@ const SpeechRecorder = await component('SpeechRecorder')
 const CandidatePanel = await component('CandidatePanel', { './SpeechRecorder': { SpeechRecorder } })
 const PrivacyPanel = await component('PrivacyPanel')
 const StatusBar = await component('StatusBar')
+const AddContext = await component('AddContext')
 const props = {
   socket: null, fsm: 'CANDIDATE_WAIT', detail: '', round: 'candidate', selectedIdx: null,
   spoken: null, grounding: [], fallback: true, labels: ['call Elena', '', '', '', 'Cancel'],
 }
+
+test('context form is a labelled UI preview with saving disabled', () => {
+  const html = renderToStaticMarkup(createElement(AddContext))
+  assert.match(html, /Add context/)
+  assert.match(html, /<dialog[^>]*aria-labelledby="add-context-title"/)
+  assert.match(html, /name="topic"/)
+  assert.match(html, /<textarea[^>]*name="context"/)
+  assert.match(html, /nothing is saved or sent/)
+  assert.match(html, /<button[^>]*disabled=""[^>]*>Save context/)
+})
 
 test('fallback preserves the selected intent, disables unused targets and marks the reply', () => {
   const html = renderToStaticMarkup(createElement(CandidatePanel, props))
