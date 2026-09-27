@@ -76,6 +76,37 @@ def test_database_timeout_discards_connection_before_pool_cleanup() -> None:
     asyncio.run(run())
 
 
+def test_graph_display_queries_do_not_transfer_embedding_vectors() -> None:
+    from datetime import UTC, datetime
+
+    graph = TigerGraphService(
+        "", "user", MiniLmEmbeddingProvider(), DatabaseConfig(), load_config().reinforcement
+    )
+
+    async def fetch(sql: str, *args: object) -> list[dict]:
+        assert "embedding" not in sql and "SELECT *" not in sql
+        return [
+            {
+                "id": "user",
+                "kind": "Person",
+                "content": "Alex",
+                "weight": 1.0,
+                "attributes": json.dumps({"name": "Alex", "relationship": "self"}),
+                "last_accessed": datetime.now(UTC),
+            }
+        ]
+
+    graph._fetch = fetch
+    graph.edges_among = AsyncMock(return_value=[])
+
+    async def run() -> None:
+        nodes, edges = await graph.snapshot()
+        assert nodes[0].label == "Alex" and edges == []
+        assert (await graph.people())[0].name == "Alex"
+
+    asyncio.run(run())
+
+
 def turn(index: int, **kwargs: object) -> ConversationTurn:
     return ConversationTurn.model_validate(
         {
