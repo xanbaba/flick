@@ -84,6 +84,23 @@ def test_manual_override_wins_and_persists(tmp_path: Path) -> None:
     assert llm.calls == 0
 
 
+def test_bare_greetings_do_not_spend_requests_or_guess_identity(tmp_path: Path) -> None:
+    llm = _ScriptedLLM([])
+    service = PartnerService(_graph(tmp_path), llm=llm)
+    for greeting in ["hello", "HELLO!", "hi there", "hey", ""]:
+        assert asyncio.run(service.identify(greeting)).partner_id is None
+    assert llm.calls == 0
+
+
+def test_greeting_with_identity_still_runs_identification(tmp_path: Path) -> None:
+    llm = _ScriptedLLM([json.dumps({"partner_id": "sofia", "confidence": 0.9, "reason": "name"})])
+    service = PartnerService(_graph(tmp_path), llm=llm)
+    assert asyncio.run(service.identify("Hello, it's Sofia.")).partner_id == "sofia"
+    assert llm.calls == 1
+    assert asyncio.run(service.identify("hello")).partner_id == "sofia"
+    assert llm.calls == 1
+
+
 def test_unknown_id_does_not_replace_the_current_partner(tmp_path: Path) -> None:
     first = json.dumps({"partner_id": "sofia", "confidence": 0.8, "reason": "daughter"})
     bogus = json.dumps({"partner_id": "nobody", "confidence": 0.9, "reason": "guess"})

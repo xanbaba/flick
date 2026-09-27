@@ -9,6 +9,7 @@ is changed.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from pydantic import BaseModel
@@ -118,6 +119,12 @@ class PartnerService:
         if self._override_id is not None:
             assert self._current is not None
             return self._current
+
+        # A bare greeting contains no speaker identity. Preserve the existing
+        # attribution rather than spending a model request guessing one.
+        words = re.findall(r"\w+", transcript.casefold())
+        if not words or words in (["hello"], ["hi"], ["hey"], ["hello", "there"], ["hi", "there"]):
+            return self._keep_previous("greeting contains no speaker identity")
 
         people = await run_memory(self._worker, self._people_block)
         prompt = _fill(self._template, people=people, transcript=transcript)
