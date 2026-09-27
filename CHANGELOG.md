@@ -4,6 +4,31 @@ Changes to `ARCHITECTURE.md`, newest first. Each entry lists what changed, why, 
 
 ---
 
+## Reduced scope and approved sensor mapping — 2026-09-27
+
+The current architecture retains the spoken conversation loop, onboarding,
+visible evolving memory, recent conversation context, and required Tiger Data
+storage. Optional features remain outside the deadline even where historical
+entries below describe broader plans.
+
+Following the sensor merge, the user approved **jaw clench = next** and
+**eyes closed = select**. Architecture now matches the implemented band-power
+features, baseline calibration, thresholds and source labels. Mental-command
+training is no longer required. Runtime config and shared contracts have not
+been changed by this documentation revision.
+
+Remaining integration includes shared message/config/type contracts, scan input
+and UI/FSM wiring, Tiger persistence and conversational context. Sensor follow-up
+must address stale contact, disconnect readiness, event freshness/identity and
+simultaneous select precedence. Existing development recorder/replay utilities
+may remain without expanding product scope.
+
+Merge verification: 251 Python tests, 16 frontend tests, Ruff lint/format and the
+frontend build passed. An isolated synthetic P1 process emitted both trigger
+roles. Live hardware and Tiger end-to-end acceptance were not rerun here.
+
+---
+
 ## P1 sensor built: clench = next, eyes closed = select — 2026-09-27
 
 Mapping confirmed by Zahid: **jaw clench = next**, **eyes closed ~2 s = select**; the mental command is gone.

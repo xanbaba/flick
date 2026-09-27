@@ -4,16 +4,18 @@
 
 ## 0. Scope and implementation status
 
-**Revision 2026-09-27: five-hour hackathon scope.** This replaces the previous
+**Revision 2026-09-27: three-hour integration scope.** This replaces the previous
 larger architecture. Deliver the spoken conversation loop, live Cortex
 next/select input, onboarding, and persistent memory that updates and carries
 context across turns. **Tiger Data is required for the sponsor challenge.**
 
 This is the target, not a claim of completed implementation. At the scope review,
 the repository had a working keyboard/SSVEP-oriented conversation pipeline and
-Kuzu memory. Cortex acquisition, shared scanning, Tiger storage, and explicit
-recent-conversation context still required implementation. Existing tests passing
-does not establish that this target works.
+Kuzu memory. Zahid's sensor branch now supplies Cortex acquisition, baseline
+calibration, and clench/eyes-closed detectors. Its messages still need integration
+with the shared bus, input adapter, scan controller, and conversation UI. Tiger
+storage and explicit recent-conversation context remain unimplemented. Passing
+sensor tests does not establish an integrated live conversation.
 
 `AGENTS.md` governs process. Its references to retired stimulus, replay, and DSP
 features do not restore them to scope. Sections 5 and 6 specify the reduced
@@ -23,8 +25,8 @@ interfaces or bypass their coordinated-edit process.
 ## 1. The product to deliver
 
 A conversational partner speaks. Flick transcribes them and uses personal memory
-plus recent conversation to generate three reply intents. A trained Emotiv mental
-command moves a highlight; a jaw clench selects. Flick generates three sentences
+plus recent conversation to generate three reply intents. A jaw clench moves a
+highlight; closing the eyes selects. Flick generates three sentences
 for the chosen intent, the user selects one, and Flick speaks it. Supported new
 facts are committed to Tiger and appear in the memory graph.
 
@@ -71,13 +73,17 @@ Do not add sponsor features unrelated to the core conversation.
 
 Use Emotiv EPOC X through Launcher/Cortex on one PC. Verify account permissions,
 actual stream fields, timestamps, and quality scale on the team's headset.
-Required inputs are mental commands (`com`), facial activity (`fac`), and device/
-signal-quality information (`dev`, `eq`). Band power and raw EEG are not required.
+Required detector inputs are band power (`pow`) and fresh device/contact quality
+(`dev`); the bridge also subscribes to signal quality (`eq`) and facial activity
+(`fac`). Facial labels are diagnostic, not the clench detector. Mental commands
+(`com`), a trained mental-command profile, and raw EEG are not required.
 No alternate headset integration or hidden device fallback is in scope.
 
 ### 2.2 Interaction
 
-Next is a trained `push` mental command; select is a lower-face jaw clench.
+Next is jaw-muscle gamma activity during a clench; select is occipital alpha
+activity during eye closure. Use the implemented mapping, not Emotiv facial
+labels: the headset tests reported inconsistent labels for actual clenches.
 P1 detects actions without knowing labels, tile indices, or trial IDs. P3 owns
 scan state and converts accepted actions into selections. Renderers display that
 state and never calculate an independent highlight.
@@ -86,12 +92,12 @@ state and never calculate an independent highlight.
 
 | ID | Decision |
 |---|---|
-| DSP-1 | Next: matching `push`, power at least 0.45 for 0.5 seconds. |
-| DSP-2 | Select: matching `clench`, lower-face power at least 0.5 for 0.2 seconds. |
-| DSP-3 | Shared 0.8-second refractory after either event; release before the same sustained action fires again. |
-| DSP-4 | Reset holds on low power, action change, poor/missing quality, disconnect, or a sample gap over 0.5 seconds. |
-| DSP-5 | Facial activity above 0.3 overlapping next marks contamination; expose the flag without a diagnostic chart. |
-| DSP-6 | No live triggers until session, trained/loaded profile, and fresh required streams confirm readiness. |
+| DSP-1 | Next: mean log10 gamma power over FC5/FC6/T7/T8, baseline z-score at least 8 for 0.25 seconds. |
+| DSP-2 | Select: mean log10 alpha power over O1/O2, baseline z-score at least 2 for 0.5 seconds. Eye closure can take roughly two seconds to produce the signal; the hold is not total latency. |
+| DSP-3 | Shared 0.8-second refractory after either event plus select's own 3-second refractory; release before the same sustained action fires again. |
+| DSP-4 | Reset holds below threshold, on poor/missing/stale quality, disconnect, or a sample gap over 0.5 seconds. Contact quality must be at least 3 on the six used sensors. |
+| DSP-5 | Jaw z-score at least 4 overlapping a select hold marks contamination; expose the flag without a diagnostic chart. |
+| DSP-6 | Calibrate on 20 seconds of relaxed eyes-open rest, requiring at least 60% of expected samples. No live triggers until calibration, session, and fresh required streams confirm readiness. |
 
 These are configurable starting values, not measured performance claims. Use
 elapsed event time, not sample counts. Verify Cortex-to-normalized field mapping;
@@ -116,7 +122,8 @@ do not assume illustrative array positions or quality units are the real API.
 
 1. No hidden manual triggering of headset selections. Keyboard development input
    always displays **KEYBOARD INPUT** and is never described as headset input.
-2. Live BCI displays **NEXT: MENTAL COMMAND** and **SELECT: JAW CLENCH (MUSCLE)**.
+2. Live BCI displays **NEXT: JAW CLENCH (MUSCLE)** and
+   **SELECT: EYES CLOSED (ALPHA BAND POWER)**.
    Do not claim thought reading or isolated neural origin.
 3. Manual partner text bypasses only the microphone, never secretly selects tiles,
    and is marked as a scripted/manual prompt.
@@ -124,10 +131,10 @@ do not assume illustrative array positions or quality units are the real API.
    development, outputs remain labelled **REPLAY** or **SYNTHETIC SIGNAL**;
    they cannot establish live headset success.
 5. Show actual acquisition readiness and storage availability. A browser socket
-   connection is not a trained headset; local PostgreSQL is not Tiger Cloud.
+   connection is not a calibrated, ready headset; local PostgreSQL is not Tiger Cloud.
 6. Show only measured or known values. Hide unfinished analytics/cost panels.
    Announce memory as saved or learned only after confirmed database commit.
-7. Disclose cloud memory, LLM/STT/TTS use and the jaw-clench modality. Use only a
+7. Disclose cloud memory, LLM/STT/TTS use and both input modalities. Use only a
    consented configured voice; never claim all data stays on the machine.
 8. Report actual acceptance results. Earlier flicker experiments do not validate
    this next/select implementation.
@@ -147,10 +154,11 @@ P4: one browser conversation screen + memory graph + playback
 
 Launch `python -m sensor.main`, the existing backend, and the existing frontend.
 Remove P2/stimulus from `run.sh`. Retire `stim.*`, port 5557, and stimulus socket
-ownership in adapters. Training happens before the demo through available Emotiv
-tooling; a P3→P1 control channel is not required for this reduced scope.
+ownership in adapters. P1 performs baseline calibration at startup. Its existing
+5556 control listener supports recalibration; a product calibration UI is not
+required for this reduced scope.
 
-Authorize/load the trained profile before the demo. No model loading, database
+Authorize Cortex and complete eyes-open calibration before the demo. No model loading, database
 calls, blocking disk work, or unrelated network calls in P1's acquisition loop.
 Cortex acquisition itself is the required network connection.
 
@@ -175,7 +183,7 @@ it and do not fabricate an empty or seeded personal memory.
 | Area | Deadline work |
 |---|---|
 | Shared | Update `shared/{schemas,config,bus}.py`, matching frontend types, and core config together. |
-| Sensor | Add `sensor/main.py`, Cortex normalization and next/select detection; small modules suffice. |
+| Sensor | Integrate existing Cortex bridge/detectors; close freshness, disconnect and simultaneous-action gaps. |
 | Inputs | Add `inputs/{bci,scan}.py`; update keyboard for the same scan controller. |
 | Backend | Preserve orchestrator/services/providers; add database integration and bounded recent-turn context. |
 | Frontend | Adapt dashboard, CandidatePanel, transcript, MemoryBrain and status; no separate `/pilot`. |
@@ -196,22 +204,34 @@ reinforcement, and runtime voice/cache settings unless replaced here.
 ```yaml
 input:
   adapter: keyboard           # keyboard | bci; use bci for the live demo
-emotiv:
+sensor:
+  source: emotiv
   cortex_url: wss://localhost:6868
-  profile: flick-pilot
-  headset_id: auto
-  streams: [com, fac, dev, eq]
+  headset_id: null
+  calibration_s: 20
+  min_calibration_fraction: 0.6
   min_contact_quality: 3      # verify normalized scale on actual device
+  max_sample_gap_s: 0.5
+  shared_refractory_s: 0.8
+  contamination_z: 4.0
+  status_hz: 1.0
+  next:
+    sensors: [FC5, FC6, T7, T8]
+    band: gamma
+    z_threshold: 8.0
+    hold_s: 0.25
+    refractory_s: 0.0
+  select:
+    sensors: [O1, O2]
+    band: alpha
+    z_threshold: 2.0
+    hold_s: 0.5
+    refractory_s: 3.0
+  record: false
 scan:
   trial_timeout_s: 60
   hold_after_select_s: 0.6
   start_idx: 0
-triggers:
-  refractory_s: 0.8
-  contamination_threshold: 0.3
-  max_sample_gap_s: 0.5
-  mental_command: {action: push, min_power: 0.45, hold_s: 0.5}
-  jaw_clench: {action: clench, min_power: 0.5, hold_s: 0.2}
 database:
   memory_pool_max: 5
   query_timeout_s: 0.3
@@ -237,7 +257,11 @@ voice:
   playback_timeout_s: 30
 ```
 
-Remove old `mode`, EEG/DSP/stimulus/classify/decision/calibration and Kuzu path
+P1 currently reads an optional `sensor:` section and otherwise uses Python
+defaults. Move those settings into active config in the coordinated revision.
+Until then, `--no-record` disables its existing optional recorder for normal use.
+
+Remove old `mode`, EEG/DSP/stimulus/classify/decision/SSVEP-calibration and Kuzu path
 requirements from active configuration. Do not add spelling, replay, telemetry,
 spectator, cost, or outbox configuration. Disable omitted services during the
 transition. Validate positive bounds, finite thresholds, and required streams.
@@ -259,14 +283,19 @@ revision coherently across producers and consumers.
 
 | Message | Required content |
 |---|---|
-| `bci.trigger` | Unique event ID, original/normalized timestamp, role `next/select`, kind `mental_command/jaw_clench`, strength, contamination. No tile/trial identity. |
-| `bci.status` | Actual `emotiv` source, connection/readiness and reason, headset identity, loaded profile/trained actions, available contact/signal quality. Missing measurements are null. |
+| `bci.trigger` | Unique event ID, original/normalized timestamp, role `next/select`, kind `jaw_clench/eyes_closed`, strength, contamination. No tile/trial identity. |
+| `bci.status` | Actual `emotiv` source, connection/readiness and reason, headset identity, calibrated/calibration progress, available contact/signal quality. Missing measurements are null. |
 | `input.selection` | Current trial ID, target index, confidence, source `bci/keyboard`, algorithm `step_scan` for BCI, trigger kind where applicable, accepted next count (`moves`). |
 
 Normalize Cortex timestamps to the backend-comparable event clock. P3 rejects
 events predating trial activation, duplicate/stale events, and events for closed
 interaction periods. Loss of fresh readiness disarms input. Select strength is
 BCI confidence, not accuracy; manual input uses 1.0 with its badge.
+
+Existing P1 models live in `sensor/messages.py`; they are not yet in the shared
+bus union or frontend types and do not yet provide unique event IDs. Integrate
+them coherently. Existing optional band-power/trigger-level diagnostics need no
+frontend panel; trigger levels are baseline z-scores, not Cortex command powers.
 
 ### 6.2 Browser interaction
 
@@ -312,15 +341,17 @@ partner text for recovery. Playback deadline remains separate from scan timeout.
 
 ## 7. Live input and scan
 
-Verify Cortex authorization/session/profile/subscription behavior against the
-installed tooling. Train neutral/push through available Emotiv tooling before
-the demo, then verify the saved profile reloads and emits usable commands. Build
-only a minimal utility if that tooling cannot perform required training. No
-product training wizard or training during an active conversation.
+Verify Cortex authorization/session/subscription behavior against the installed
+tooling. Complete eyes-open baseline calibration, then verify both actions before
+the demo. Recalibrate only outside active conversation; no mental-command training
+or product training wizard is required.
 
-P1 applies section 2.3 to fresh normalized samples. Missing facial/quality data is
-not evidence of clean/ready input. Sustained actions fire once and require release.
-Preserve contamination disclosure even when the next event is accepted.
+P1 applies section 2.3 to fresh normalized samples. Missing/stale band power or
+contact quality is not evidence of ready input. Sustained actions fire once and
+require release. Preserve contamination disclosure when a select is accepted.
+Fix the merged engine's stale-contact handling and propagate live disconnects;
+reject repeated/backward source timestamps and old queued samples. Resolve
+simultaneous holds in favor of select before next consumes shared refractory.
 
 Keep the InputSource lifecycle and share one backend ScanController:
 
@@ -517,8 +548,9 @@ tooling is omitted, not claimed as implemented.
 - Spelling, binary tree integration, lexicon, suggestions and spelling endpoints.
 - Separate `/pilot`, dual-view ownership protocol, feedback-tone polish, detailed
   band-power/muscle/headset panels.
-- Synthetic-source framework, recording, manifests, replay, training wizard/jobs.
-  Small deterministic detector/scan test inputs remain required.
+- Further synthetic-source, recording, manifest, replay, or training wizard work.
+  The merged P1 development utilities may remain, with honest source labels;
+  they need no product integration. Small detector/scan test inputs remain required.
 - Durable mirror/outbox, offline learning, queued deletion and recovery ledger.
 - Telemetry, hypertables/aggregates, analytics/ITR, automated cued-block product,
   learning-event ledger and MemoryTimeline.
@@ -537,7 +569,8 @@ approved scope migration.
 
 1. Coordinate reduced config/contracts and launcher; prove actual Cortex events
    and Tiger connectivity/extension availability immediately.
-2. Implement bridge/detectors and shared scan with keyboard development input.
+2. Integrate the existing bridge/detectors with shared scan and keyboard input;
+   fix freshness/disconnect handling and select precedence.
 3. Connect the conversation UI/FSM to scan and preserve playback.
 4. Port graph/onboarding/learning to Tiger, import needed data, and verify real-
    database two-turn/restart behavior before removing Kuzu runtime use.
@@ -555,7 +588,7 @@ to claim completion.
 
 | Gate | Required evidence |
 |---|---|
-| Real input | Saved/trained profile loads; live mental command advances and jaw clench selects. Quality/readiness loss disarms. |
+| Real input | Eyes-open calibration completes; live jaw clench advances and eye closure selects. Quality/readiness loss disarms. |
 | Detector/scan | Timestamp tests cover holds, release, refractory, stale/duplicate events, contamination, simultaneous actions, wrapping/disabled tiles, timeout and Cancel. |
 | Full turn | Real microphone → intents → Cortex selection → candidates → Cortex selection → audible response → confirmed microphone rearm. |
 | Tiger core | Actual Tiger-backed onboarding, both retrieval rounds, reinforcement/new fact, graph update and restart persistence; label local-only results. |
