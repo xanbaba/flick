@@ -148,14 +148,19 @@ class LLMStage:
                 status = response.status_code if response is not None else None
                 hint = rate_limit_error(response).retry_after_s if response is not None else None
                 if isinstance(exc, RateLimitError) or status == 429:
-                    hint = exc.retry_after_s if isinstance(exc, RateLimitError) else hint
+                    limited = exc if isinstance(exc, RateLimitError) else rate_limit_error(response)
+                    hint = limited.retry_after_s
                     breaker.record_rate_limit(hint)
-                    self.reason = "rate_limited"
+                    self.reason = (
+                        "daily_quota_exhausted" if limited.daily_quota_exhausted else "rate_limited"
+                    )
                     self.log.warning(
                         "llm.provider_cooldown",
                         provider=link.name,
                         http_status=429,
                         retry_after_s=hint,
+                        quota_ids=limited.quota_ids,
+                        reason=self.reason,
                     )
                     return None
                 transient = status in {500, 502, 503, 504} or isinstance(

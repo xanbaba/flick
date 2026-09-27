@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import math
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -14,6 +15,7 @@ class RateLimitError(RuntimeError):
         super().__init__("provider rate limited the request (HTTP 429)")
         self.retry_after_s = retry_after_s
         self.quota_ids = quota_ids
+        self.daily_quota_exhausted = any("PerDay" in quota for quota in quota_ids)
 
 
 def provider_error_code(response: httpx.Response | None) -> str | None:
@@ -49,7 +51,7 @@ def _seconds(value: object) -> float | None:
     return seconds if math.isfinite(seconds) and seconds >= 0 else None
 
 
-def rate_limit_error(response: httpx.Response) -> RateLimitError:
+def rate_limit_error(response: httpx.Response, *, now: datetime | None = None) -> RateLimitError:
     delays: list[float] = []
     retry_header = response.headers.get("retry-after")
     seconds = _seconds(retry_header)
@@ -83,4 +85,10 @@ def rate_limit_error(response: httpx.Response) -> RateLimitError:
             for violation in violations if isinstance(violations, list) else []:
                 if isinstance(violation, dict) and isinstance(violation.get("quotaId"), str):
                     quota_ids.append(violation["quotaId"])
+    if any("PerDay" in quota for quota in quota_ids):
+        # Gemini daily project quotas reset at midnight Pacific, not after the
+        # short RetryInfo delay sometimes returned alongside daily exhaustion.
+        current = (now or datetime.now(UTC)).astimezone(ZoneInfo("America/Los_Angeles"))
+        reset = (current + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        delays.append((reset.astimezone(UTC) - current.astimezone(UTC)).total_seconds())
     return RateLimitError(max(delays) if delays else None, quota_ids)

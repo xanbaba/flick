@@ -18,6 +18,65 @@ from backend.providers.registry import LLMFallbackChain
 from shared.config import load_config
 
 
+@pytest.mark.parametrize(
+    ("now", "expected"),
+    [
+        (datetime(2026, 9, 27, 13, 47, tzinfo=UTC), 61980),
+        (datetime(2026, 3, 8, 8, tzinfo=UTC), 23 * 3600),
+        (datetime(2026, 11, 1, 7, tzinfo=UTC), 25 * 3600),
+    ],
+)
+def test_daily_quota_waits_until_pacific_reset(now: datetime, expected: float) -> None:
+    response = httpx.Response(
+        429,
+        json={
+            "error": {
+                "details": [
+                    {"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "32s"},
+                    {
+                        "@type": "type.googleapis.com/google.rpc.QuotaFailure",
+                        "violations": [
+                            {"quotaId": "GenerateRequestsPerDayPerProjectPerModel-FreeTier"}
+                        ],
+                    },
+                ]
+            }
+        },
+    )
+    error = rate_limit_error(response, now=now)
+    assert error.daily_quota_exhausted
+    assert error.retry_after_s == expected
+
+
+async def test_daily_quota_uses_backup_without_retrying_exhausted_provider(monkeypatch) -> None:
+    from backend.providers.base import LLMProvider
+    from backend.providers.rate_limits import RateLimitError
+
+    clock = [100.0]
+    monkeypatch.setattr(registry.time, "monotonic", lambda: clock[0])
+
+    class Provider(LLMProvider):
+        def __init__(self, name: str) -> None:
+            self.name = name
+            self.calls = 0
+
+        async def complete(self, system: str, user: str, **kwargs: object) -> str:
+            self.calls += 1
+            if self.name == "gemini":
+                raise RateLimitError(60000, ["GenerateRequestsPerDayPerProjectPerModel-FreeTier"])
+            return '{"ok": true}'
+
+    primary, backup = Provider("gemini"), Provider("funded_backup")
+    chain = LLMFallbackChain([primary, backup])
+    for stage_name in ["intents", "candidates", "extraction"]:
+        result = await chain.new_stage(load_config().generation, stage_name).generate(
+            "system", "input", json.loads, lambda p, r: p, max_tokens=50
+        )
+        assert result.provider == "funded_backup" and result.value == {"ok": True}
+        clock[0] += 60
+    assert primary.calls == 1 and backup.calls == 3
+
+
 def test_retry_guidance_preserves_longest_delay_and_quota_identifiers() -> None:
     response = httpx.Response(
         429,
