@@ -1,8 +1,8 @@
-"""Deepgram STT provider (ARCHITECTURE.md section 17, SW-7).
+"""Deepgram STT provider (ARCHITECTURE.md section 10).
 
 Batch call against Deepgram's pre-recorded audio endpoint: the raw
-16-bit mono PCM captured by speech.py's VAD (section 15.1) is sent as
-``audio/l16`` at the sensor's sample rate. No streaming -- the whole
+16-bit little-endian mono PCM captured by speech.py's VAD is sent with
+explicit encoding and capture sample rate. No streaming -- the whole
 utterance is already buffered by the time speech ends.
 """
 
@@ -28,10 +28,15 @@ class DeepgramSTTProvider(STTProvider):
     async def transcribe(self, pcm: bytes, sample_rate: int) -> Transcript:
         headers = {
             "Authorization": f"Token {self._api_key}",
-            "Content-Type": f"audio/l16;rate={sample_rate}",
+            "Content-Type": "application/octet-stream",
         }
         async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.post(_URL, headers=headers, content=pcm)
+            response = await client.post(
+                _URL,
+                headers=headers,
+                params={"encoding": "linear16", "sample_rate": sample_rate, "channels": 1},
+                content=pcm,
+            )
         response.raise_for_status()
         payload = response.json()
         channels = payload.get("results", {}).get("channels") or []
