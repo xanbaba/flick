@@ -4,13 +4,15 @@
 
 This document is the single source of truth for the system. Numeric constants are normative; where a constant is tunable it lives in `config.yaml` (§5) and code reads it from there. No magic numbers in source.
 
+> **Revision 2 (2026-09-27).** Hardware moved from OpenBCI Cyton to **Emotiv EPOC X on the free Cortex tier**, selection moved from simultaneous five-frequency SSVEP to **sequential presentation** (§7), the knowledge graph moved from KuzuDB to **Tiger Data** (PostgreSQL + TimescaleDB + pgvector, §10, §18), and the system runs on **one 165 Hz PC**. Every change is itemised in `CHANGELOG.md`. Code has not caught up yet; §21.2 lists the follow-up work.
+
 ---
 
 ## 0. How to read this
 
 - §1–§3 define what is being built and how the processes fit together.
 - §4–§6 are the contracts: repository layout, configuration, and every message schema. **These are frozen first and everything else depends on them.**
-- §7 is the input abstraction. Read it before writing any code that consumes a user selection.
+- §7 is the input abstraction and the selection method. Read it before writing any code that consumes a user selection.
 - §8–§20 specify each subsystem.
 - §21–§26 cover build sequencing, failure handling, acceptance criteria and submission.
 
@@ -20,24 +22,26 @@ This document is the single source of truth for the system. Numeric constants ar
 
 ### 1.1 What it does
 
-A person who cannot speak wears an EEG headset and looks at a screen showing five flickering tiles. A microphone listens to whoever is talking to them. When the conversational partner speaks, speech-to-text transcribes it, and a language model — grounded in a personal knowledge graph of the user's life — writes four candidate *intents* onto the tiles.
+A person who cannot speak wears an EEG headset and looks at a screen showing four tiles. A microphone listens to whoever is talking to them. When the conversational partner speaks, speech-to-text transcribes it, and a language model — grounded in a personal memory of the user's life — writes three candidate *intents* onto the tiles. The fourth tile is always Cancel.
 
-The user selects one by looking at it. Their visual cortex entrains to that tile's flicker frequency; the signal-processing layer detects which. The system then retrieves relevant personal facts from the graph, generates three full candidate sentences, and displays them for a second selection. The chosen sentence is spoken aloud in a clone of the user's own voice. Afterwards the system extracts new facts from the exchange and grows the memory graph, rendered live in 3D so observers can watch it think and learn.
+The tiles are presented **one at a time**. The user selects the one they want in one of two ways (§7): by firing a single trained brain command while their tile is highlighted (**scan-switch**, the default), or simply by looking at it while it flickers so their visual cortex responds more strongly to it than to the others (**sequential flicker**). The system then retrieves relevant personal facts, generates three full candidate sentences, and presents them for a second selection. The chosen sentence is spoken aloud in a clone of the user's own voice. Afterwards the system extracts new facts from the exchange and grows the memory, rendered live in 3D so observers can watch it think and learn.
+
+The user's memory starts from whatever they, or someone on their behalf, choose to share at onboarding (§14), and every conversation afterwards is recorded and used to keep that profile current (§12.4, §18).
 
 ### 1.2 Why it is not a speller
 
-Character-by-character BCI spelling runs at roughly 8 words per minute against speech's 150. Selecting *semantic intent* rather than letters produces a full sentence in about four seconds. The Speller mode exists as a deliberate contrast so the difference can be demonstrated rather than asserted.
+Character-by-character BCI spelling runs at roughly 8 words per minute against speech's 150. Selecting *semantic intent* rather than letters produces a full sentence from two selections. The Speller mode exists as a deliberate contrast so the difference can be demonstrated rather than asserted.
 
 ### 1.3 Modes
 
 | Mode | Purpose | Priority |
 |---|---|---|
-| **Intent** | The product. Semantic selection, ~4 s per sentence. | P0 |
-| **Speller** | N-ary search over the alphabet, ~6 s per character. Shown briefly to make the contrast visible. | P2 |
+| **Intent** | The product. Two selections per sentence. | P0 |
+| **Speller** | Row/column scanning over the alphabet using the same switch. Shown briefly to make the contrast visible. | P2 |
 
 ### 1.4 Non-goals
 
-Not built, not specified: VR stimulus delivery, haptic feedback, relay or environmental control, Raspberry Pi involvement, EMG hybrid confirmation on the OpenBCI path, local neural voice cloning, speaker identification by voice embedding, multilingual output, blockchain.
+Not built, not specified: VR stimulus delivery, haptic feedback, relay or environmental control, Raspberry Pi involvement, simultaneous multi-frequency SSVEP classification (FBCCA/eTRCA — requires raw EEG, which the free Emotiv tier does not provide), a second display machine, local neural voice cloning, speaker identification by voice embedding, multilingual output, blockchain.
 
 ### 1.5 Sponsor alignment
 
@@ -46,40 +50,40 @@ Each integration is load-bearing. Nothing is included solely to claim a track.
 | Track | What the system uses it for | Priority |
 |---|---|---|
 | Best Overall | Automatic | — |
-| **Microsoft — What's Missing?** | The interface is a flicker grid and a 3D memory graph. There is no chat window anywhere in the product; AI is one stage of a pipeline, not the experience. | P0 (framing only) |
-| **ElevenLabs** | Instant voice cloning; the user's restored voice (§16) | P0 |
-| **Gemini** | Intent labels, grounded sentences, partner identification, fact extraction, graph seeding (§13) | P0 |
-| **Tiger Data** | Time-series sink for EEG, correlation scores and stimulus integrity; continuous aggregates drive the analytics panel (§18) | P1 |
+| **Microsoft — What's Missing?** | The interface is a scanning tile row and a 3D memory graph. There is no chat window anywhere in the product; AI is one stage of a pipeline, not the experience. | P0 (framing only) |
+| **Tiger Data** | **The only database.** The user's profile and memory graph (relational + pgvector), every conversation turn, the history of what the system learned and when, the Emotiv signal streams and every selection — side by side in one PostgreSQL. Continuous aggregates drive the analytics panel; compression keeps the signal streams on the free tier (§10, §18) | **P0** |
+| **ElevenLabs** | Instant voice cloning; the user's restored voice (§15) | P0 |
+| **Gemini** | Intent labels, grounded sentences, partner identification, fact extraction, profile seeding (§12) | P0 |
 | **DigitalOcean** | Spectator relay droplet; Gradient AI as third LLM fallback (§19) | P2 |
 | **GoDaddy Registry** | Domain fronting the spectator view | P2 |
-| **Assurant** | Data-flow ledger, per-turn API cost, one-click fully-local mode (§20) | P3 |
+| **Assurant** | Data-flow ledger, per-turn API cost, one-click purge, Local Mode (§20) | P3 |
 
 ---
 
 ## 2. Decision register
 
-Deviating from any of these requires editing this document first.
+Deviating from any of these requires editing this document first, and adding an entry to `CHANGELOG.md`.
 
 ### 2.1 Hardware
 
 | ID | Decision |
 |---|---|
-| HW-1 | **OpenBCI Cyton, 8 channels, 250 Hz.** The Daisy module is not used. |
-| HW-2 | Montage: **O1, Oz, O2, POz, PO3, PO4, Pz, CPz**; SRB and BIAS on earlobe clips A1/A2. |
-| HW-3 | Wet gel electrodes. Budget 25 minutes for application. |
-| HW-4 | The Cyton runs on **battery power only**. Never USB-powered during recording. |
-| HW-5 | Stimulus renders on Machine A's built-in panel. Judge dashboard on Machine B. |
-| HW-6 | Emotiv headsets are a **secondary, optional input path** (§7.5), never the primary. |
+| HW-1 | **Emotiv EPOC X, 14 channels, free Cortex tier.** Raw EEG is licence-gated and **not available**. Usable streams: `pow` (band power, 8 Hz), `com` (mental commands, 8 Hz), `fac` (facial expressions, 32 Hz), `dev` (contact quality and battery, 2 Hz), `eq` (EEG quality, 2 Hz). `met` is 0.1 Hz without a licence and is not used. |
+| HW-2 | Sensors used: **O1, O2** (occipital, for flicker response) and all 14 for mental commands. EPOC X layout: AF3, F7, F3, FC5, T7, P7, O1, O2, P8, T8, FC6, F4, F8, AF4. The headset has no C3/C4, which limits motor-imagery decoding (§7.7). |
+| HW-3 | Saline sensors. Budget 10 minutes for setup and a contact-quality check (`dev` stream, all used sensors green). Rehydrate between sessions. |
+| HW-4 | Headset on its own battery over the Emotiv USB receiver or Bluetooth. Check battery in `sys.status` before every demo. |
+| HW-5 | **One PC**: 165 Hz panel, RTX 5050. The stimulus runs fullscreen on the built-in panel; the judge dashboard runs in a browser on the same PC, on an external display or projector if one is available. |
+| HW-6 | OpenBCI Cyton is a **contingency only** (§8.7). Nothing depends on it. |
 
 ### 2.2 Interaction
 
 | ID | Decision |
 |---|---|
 | UX-1 | Two-round selection: intent → three candidates → speak. |
-| UX-2 | **Five targets.** Four semantic, one Cancel. Reducible to 4+cancel by config. |
-| UX-3 | Frequencies are **profile-dependent**, auto-selected from measured refresh rate (§9.2). |
-| UX-4 | The idle state is real. Below threshold, nothing is selected. |
-| UX-5 | Confirmation by dwell: three consecutive agreeing windows. No hybrid signal. |
+| UX-2 | **Four targets**, presented sequentially: three semantic, one Cancel. `n_intents` is 3. |
+| UX-3 | **Selection method is `scan_switch` by default**, `seq_flicker` as the pure-EEG mode. Both share one stimulus (§9). Final choice is made by the feasibility gate (§7.6). |
+| UX-4 | The idle state is real. With no trigger (scan-switch) or no clear winner (sequential flicker), nothing is selected. |
+| UX-5 | Flicker frequency is **15.0 Hz**: an exact divisor of 165, 120 and 60 Hz, and inside Emotiv's low-beta band, away from resting alpha. |
 | UX-6 | Partner identity inferred by LLM from transcript, with manual override. |
 | UX-7 | English only. |
 
@@ -87,12 +91,12 @@ Deviating from any of these requires editing this document first.
 
 | ID | Decision |
 |---|---|
-| DSP-1 | Window length is profile-dependent. Hop is 250 ms on both profiles. |
-| DSP-2 | Notch 60 Hz (Q=30), then 4th-order Butterworth bandpass, zero-phase. |
-| DSP-3 | **FBCCA** is the default classifier. Five sub-bands, three harmonics. |
-| DSP-4 | **eTRCA** is used automatically when a calibration file exists for the active pilot and is under two hours old. Not surfaced in the UI. |
-| DSP-5 | Stimulus onset markers are published over LSL for calibration alignment. |
-| DSP-6 | **Nothing classifies until it has received a `stim.profile` message.** |
+| DSP-1 | **No raw-EEG processing in Flick.** Emotiv's Cortex computes band power and runs the mental-command classifier; Flick consumes their outputs. |
+| DSP-2 | Scan-switch trigger: the trained `push` command's power must stay at or above threshold for `hold_s` (§8.3). |
+| DSP-3 | Sequential-flicker score: occipital low-beta power in the tail of each slot, z-scored against a rest baseline (§8.4). |
+| DSP-4 | Mental-command training uses the Cortex `training` API and is stored in the pilot's Emotiv profile. Training is on **attempted movement of one limb** (§7.3). |
+| DSP-5 | Slot onsets are published over ZMQ with wall-clock timestamps. P1, P2 and Cortex share one machine and one clock; LSL is not used. |
+| DSP-6 | **Nothing selects until it has received a `stim.profile` message.** |
 
 ### 2.4 Software
 
@@ -100,86 +104,88 @@ Deviating from any of these requires editing this document first.
 |---|---|
 | SW-1 | Python 3.11, `uv`. |
 | SW-2 | Backend FastAPI + uvicorn. Frontend Vite + React + TypeScript + Tailwind. |
-| SW-3 | Graph: KuzuDB, embedded. |
-| SW-4 | Embeddings: `all-MiniLM-L6-v2` (384-dim), local, CPU, stored as a Kuzu property. |
-| SW-5 | Context curation: `apricot-select`, facility location, greedy. |
+| SW-3 | **Memory store: Tiger Data** — PostgreSQL with TimescaleDB and pgvector, on Tiger Cloud. Replaces KuzuDB. One database for profile, graph, conversations and signal telemetry. |
+| SW-4 | Embeddings: `all-MiniLM-L6-v2` (384-dim), local, CPU, stored as `vector(384)`. |
+| SW-5 | Context curation: facility-location greedy selection, implemented directly in numpy (the `apricot-select` implementation measured 800–900 ms against a 150 ms budget and was dropped). |
 | SW-6 | LLM: Gemini primary, provider-swappable. |
 | SW-7 | STT: cloud primary, `faster-whisper small` on CPU as fallback. |
 | SW-8 | TTS: ElevenLabs primary, Piper local fallback, pre-rendered cache in front of both. |
-| SW-9 | **The entire Python stack is CPU-only.** No CUDA dependency anywhere. |
-| SW-10 | Memory writeback: LLM auto-extracts facts after each turn, commits above threshold, blooms onto the graph. No decay pass. |
+| SW-9 | The Python stack is CPU-only. The GPU is available but nothing requires it. |
+| SW-10 | Memory writeback: LLM auto-extracts facts after each turn, commits above threshold, blooms onto the graph, and logs every change as a `memory_events` row. No decay pass. |
 | SW-11 | Persona is created at runtime through an onboarding wizard. A committed fixture exists as fallback. |
 | SW-12 | Three OS processes plus the frontend dev server. ZeroMQ between them. |
 | SW-13 | Every provider and service is lazily constructed and degrades to a correctly-shaped placeholder. |
-| SW-14 | TimescaleDB is the telemetry sink and is **never on the critical path**. |
+| SW-14 | **Telemetry writes are never on the critical path.** Memory-store reads and writes are, and are guarded by an in-process mirror and a write outbox so a slow or unreachable database cannot stall a turn (§10.3). |
 | SW-15 | The spectator relay connection is **outbound only**; nothing from it enters the pipeline. |
-| SW-16 | A Local Mode switch forces the fully-offline chain. The system must remain functional with it on. |
+| SW-16 | A Local Mode switch forces the offline provider chain and serves the memory from the mirror. The system must remain functional with it on. |
 
 ### 2.5 Demo integrity
 
 | ID | Decision |
 |---|---|
-| DEMO-1 | **No hidden manual triggering of classifications.** Ever. |
-| DEMO-2 | Replay mode plays a real recorded session through the real classifier, with a persistent on-screen `REPLAY` badge. |
-| DEMO-3 | Every non-brain input adapter displays a persistent badge naming what it is. |
-| DEMO-4 | A scripted-prompt key exists for feeding partner utterances when the room is too loud for STT. It bypasses the microphone only, never the classifier. |
+| DEMO-1 | **No hidden manual triggering of selections.** Ever. |
+| DEMO-2 | Replay mode plays a real recorded session through the real decision logic, with a persistent on-screen `REPLAY` badge. |
+| DEMO-3 | Every non-brain input displays a persistent badge naming what it is: `KEYBOARD INPUT`, `REPLAY`, `SYNTHETIC SIGNAL`, and `MUSCLE TRIGGER (EMG)` when the scan-switch trigger is the facial-expression stream. |
+| DEMO-4 | A scripted-prompt key exists for feeding partner utterances when the room is too loud for STT. It bypasses the microphone only, never the selection. |
 | DEMO-5 | Every session is recorded to disk automatically. |
+| DEMO-6 | **Muscle activity is always visible.** The dashboard shows the facial-expression stream beside the mental-command meter. A mental-command selection that coincides with facial activity above threshold is flagged `contaminated` in the selection, in the database and on screen. |
+| DEMO-7 | The pitch says what the signal is: "a trained Emotiv mental command for attempted arm movement", not "reading thoughts". |
 
 ---
 
 ## 3. Topology
 
-### 3.1 Machines
+### 3.1 Machine
 
 ```
-┌───────────────────────────────────────────────────────────────┐
-│ MACHINE A                                                     │
-│   USB ── OpenBCI Cyton dongle                                 │
-│                                                               │
-│   P1  sensor     acquisition + DSP + classification           │
-│   P2  stimulus   vsync-locked flicker, fullscreen             │
-│   P3  backend    FastAPI, orchestrator, graph, providers      │
-│   P4  frontend   Vite dev server                              │
-└──────────────────────────┬────────────────────────────────────┘
-                           │ WebSocket over a DIRECT link
-                           │ (ethernet or dedicated hotspot —
-                           │  never venue wifi)
-┌──────────────────────────▼────────────────────────────────────┐
-│ MACHINE B — judge dashboard, browser only                     │
-└───────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────┐
+│ THE PC — 165 Hz panel, RTX 5050                                │
+│   Emotiv EPOC X ── USB receiver / BT ── EMOTIV Launcher         │
+│                                          (Cortex, wss :6868)    │
+│   P1  sensor     Cortex bridge + selection decision            │
+│   P2  stimulus   vsync-locked tiles, fullscreen, built-in panel │
+│   P3  backend    FastAPI, orchestrator, memory, providers      │
+│   P4  frontend   Vite dev server → judge dashboard (browser,   │
+│                  external display / projector if available)    │
+└───────────────┬──────────────────────────┬─────────────────────┘
+                │ TLS                      │ outbound WS
+         ┌──────▼───────┐           ┌──────▼──────────┐
+         │ Tiger Cloud  │           │ Spectator relay │
+         │ (Postgres)   │           │ (DO droplet)    │
+         └──────────────┘           └─────────────────┘
 ```
 
-The pilot sees only the P2 stimulus window. Judges see only the Machine B dashboard.
+The pilot sees only the P2 stimulus window. Judges see the dashboard.
 
 ### 3.2 Processes
 
 | Process | Entry point | Binds | Connects to |
 |---|---|---|---|
-| **P1 sensor** | `python -m sensor.main` | ZMQ PUB `tcp://127.0.0.1:5555` | ZMQ SUB `5556` |
-| **P2 stimulus** | `python -m stimulus.main` | ZMQ PUB `5557`, LSL outlet `Flick-Markers` | ZMQ SUB `5556` |
-| **P3 backend** | `uvicorn backend.app.main:app --host 0.0.0.0 --port 8000` | HTTP/WS `:8000`, ZMQ PUB `5556` | ZMQ SUB `5555`, `5557` |
+| **P1 sensor** | `python -m sensor.main` | ZMQ PUB `tcp://127.0.0.1:5555` | ZMQ SUB `5556`, `5557`; Cortex `wss://localhost:6868` |
+| **P2 stimulus** | `python -m stimulus.main` | ZMQ PUB `5557` | ZMQ SUB `5556` |
+| **P3 backend** | `uvicorn backend.app.main:app --host 0.0.0.0 --port 8000` | HTTP/WS `:8000`, ZMQ PUB `5556` | ZMQ SUB `5555`, `5557`; Tiger Cloud |
 | **P4 frontend** | `npm run dev` | HTTP `:5173`, proxies `/api` and `/ws` to `:8000` | — |
 
-Model loading, LLM calls and TTS synthesis all block for seconds at a time. The sensor loop never shares a process with them.
+P1 now subscribes to P2 directly (`5557`) because it needs slot onsets to attribute triggers and score slots. Model loading, LLM calls, database I/O and TTS synthesis all block for seconds at a time; P1 never shares a process with them.
 
 ### 3.3 One turn, end to end
 
 ```
 partner speaks
-  ├─► [P3] VAD → STT → transcript
+  ├─► [P3] VAD → STT → transcript                     → conversation_turns
   ├─► [P3] LLM: identify partner from transcript + known Person nodes
-  ├─► [P3] retrieval: embed → 2-hop expand → submodular select
-  ├─► [P3] LLM: four intent labels
+  ├─► [P3] retrieval: embed → pgvector seed → 2-hop expand → select
+  ├─► [P3] LLM: three intent labels (+ Cancel)
   ├─► [P3] ZMQ: show_targets ──► [P2] renders tiles
   │         WS: conv.intents ──► dashboard
-  ├─► [P2] LSL marker: trial onset
-  ├─► [P1] windows every 250 ms → classifier → scores ──► dashboard
-  ├─► [P1] three agreeing windows → Selection
+  ├─► [P2] slot by slot: stim.slot ──► P1, P3
+  ├─► [P1] Cortex com / pow → trigger or slot scores ──► dashboard
+  ├─► [P1] Selection
   ├─► [P3] retrieval round 2 → LLM: three candidate sentences
   │         WS: graph.activate ──► nodes pulse
   ├─► [P1] second Selection
   ├─► [P3] TTS (cache → ElevenLabs → Piper) → audio
-  └─► [P3] LLM: fact extraction → graph writeback → graph.bloom
+  └─► [P3] LLM: fact extraction → Tiger writeback → memory_events → graph.bloom
 ```
 
 ---
@@ -189,6 +195,7 @@ partner speaks
 ```
 flick/
 ├── ARCHITECTURE.md
+├── CHANGELOG.md                # every change to this document, dated
 ├── AGENTS.md
 ├── README.md
 ├── CREDITS.md
@@ -207,40 +214,36 @@ flick/
 ├── inputs/                     # §7 — the selection abstraction
 │   ├── base.py                 # InputSource ABC
 │   ├── keyboard.py             # DEV: number keys. No hardware at all.
-│   ├── ssvep.py                # production: consumes P1 over ZMQ
-│   ├── replay.py               # recorded session through the real classifier
-│   └── emotiv.py               # optional, see §7.5
+│   ├── bci.py                  # production: consumes P1 over ZMQ (was ssvep.py)
+│   └── replay.py               # recorded session through the real decision logic
 │
 ├── sensor/                     # P1
 │   ├── main.py
 │   ├── sources/
-│   │   ├── base.py             # EEGSource ABC
-│   │   ├── cyton.py            # BrainFlow
-│   │   ├── synthetic.py        # generates solvable SSVEP (§8.4)
-│   │   └── replay.py           # .npz at real-time pace
-│   ├── dsp.py
-│   ├── classifiers/
-│   │   ├── base.py
-│   │   ├── fbcca.py
-│   │   └── etrca.py
-│   ├── decision.py             # threshold + margin + dwell + refractory
-│   ├── calibration.py
+│   │   ├── base.py             # SignalSource ABC
+│   │   ├── cortex.py           # Emotiv Cortex JSON-RPC over WebSocket
+│   │   ├── synthetic.py        # generates solvable pow / com / fac (§8.5)
+│   │   └── replay.py           # recorded .jsonl at real-time pace
+│   ├── decision/
+│   │   ├── scan_switch.py      # §8.3
+│   │   └── seq_flicker.py      # §8.4
+│   ├── training.py             # Cortex mental-command training (§8.2)
 │   └── recorder.py
 │
 ├── stimulus/                   # P2
 │   ├── main.py
-│   ├── profile.py              # measure refresh → select hi/lo (§9.2)
+│   ├── profile.py              # measure refresh → frames per 15 Hz cycle (§9.2)
 │   ├── tiles.py
-│   ├── markers.py              # LSL
 │   └── integrity.py
 │
 ├── backend/                    # P3
 │   ├── app/
 │   │   ├── main.py
-│   │   ├── orchestrator.py     # conversation FSM (§14)
+│   │   ├── orchestrator.py     # conversation FSM (§13)
 │   │   ├── ws.py
 │   │   └── services/
-│   │       ├── graph.py
+│   │       ├── db.py           # asyncpg pools: memory + telemetry (§10.3)
+│   │       ├── graph.py        # Tiger-backed memory graph (§10)
 │   │       ├── retrieval.py
 │   │       ├── generation.py
 │   │       ├── extraction.py
@@ -257,6 +260,7 @@ flick/
 │   │   ├── base.py
 │   │   ├── llm_gemini.py
 │   │   ├── llm_openai_compat.py    # OpenAI, LM Studio, Ollama, DO Gradient
+│   │   ├── llm_static.py
 │   │   ├── stt_deepgram.py
 │   │   ├── stt_faster_whisper.py
 │   │   ├── tts_elevenlabs.py
@@ -283,128 +287,131 @@ flick/
 │       ├── views/{Dashboard.tsx,Onboarding.tsx}
 │       └── components/
 │           ├── MemoryBrain.tsx      # 3d-force-graph
-│           ├── EegTrace.tsx         # uPlot
-│           ├── PsdPlot.tsx          # uPlot
-│           ├── TargetScores.tsx
+│           ├── BandPowerPlot.tsx    # uPlot, occipital bands over time
+│           ├── HeadsetQuality.tsx   # per-sensor contact, battery
+│           ├── SlotPanel.tsx        # tiles, active slot, scores / trigger meter
+│           ├── MuscleStrip.tsx      # facial-expression activity (DEMO-6)
 │           ├── Transcript.tsx
 │           ├── CandidatePanel.tsx
 │           ├── StatusBar.tsx
 │           ├── SessionAnalytics.tsx
+│           ├── MemoryTimeline.tsx   # what was learned, when (§18.5)
 │           ├── PrivacyPanel.tsx
 │           ├── SpectatorQR.tsx
 │           └── BioWizard.tsx
 │
-├── spectator/                  # deployed to DigitalOcean, not Machine A
+├── experiments/
+│   └── seq_flicker/            # standalone §7.6 feasibility test (TEST_PLAN.md)
+│
+├── spectator/                  # deployed to DigitalOcean
 │   ├── relay.py
 │   ├── static/index.html
 │   └── Dockerfile
 │
-├── migrations/001_timescale.sql
+├── migrations/
+│   ├── 001_memory.sql          # extensions, profiles, nodes, edges (§10.1)
+│   └── 002_timeseries.sql      # hypertables, aggregates, compression (§18.2)
 │
 ├── scripts/
 │   ├── enroll_voice.py
 │   ├── prerender_cache.py
-│   ├── run_calibration.py
+│   ├── check_cortex.py         # licence-free streams reachable, contact quality
+│   ├── train_command.py        # neutral + push training via Cortex
+│   ├── run_cued_block.py
+│   ├── feasibility.py          # the §7.6 gate
 │   ├── check_stimulus.py
-│   ├── seed_timescale.py
-│   └── smoke_machine_a.py
+│   ├── fake_sensor.py          # dashboard dev tool (exists)
+│   ├── seed_tiger.py
+│   └── smoke.py
 │
 └── tests/
     ├── test_schemas.py
-    ├── test_dsp.py
-    ├── test_fbcca.py
-    ├── test_profiles.py
-    ├── test_decision.py
     ├── test_inputs.py
-    ├── test_graph.py
+    ├── test_scan_switch.py
+    ├── test_seq_flicker.py
+    ├── test_stimulus_profile.py
+    ├── test_graph.py           # against a disposable Postgres
     ├── test_retrieval.py
-    └── test_telemetry.py
+    ├── test_telemetry.py
+    └── ...                     # existing service tests
 ```
 
 ---
-
 ## 5. Configuration
 
 `config.yaml`, loaded by `shared/config.py`. Secrets live in `.env` and never in `config.yaml`.
 
 ```yaml
 input:
-  adapter: keyboard          # keyboard | ssvep | replay | emotiv
+  adapter: keyboard          # keyboard | bci | replay
   replay_file: null
 
 mode:
-  source: synthetic          # cyton | synthetic | replay   (sensor process)
-  targets: 5                 # 5 | 4
+  source: synthetic          # emotiv | synthetic | replay   (sensor process)
+  selection: scan_switch     # scan_switch | seq_flicker
+  trigger: mental_command    # mental_command | facial     (scan_switch only)
+  targets: 4                 # 3 semantic + Cancel
 
-eeg:
-  board: cyton
-  sample_rate: 250
-  channels: [0, 1, 2, 3, 4, 5, 6, 7]
-  channel_names: [O1, Oz, O2, POz, PO3, PO4, Pz, CPz]
-  serial_port: auto
-
-dsp:
-  hop_s: 0.25
-  notch_hz: 60.0
-  notch_q: 30.0
-  bandpass_high_hz: 48.0
-  bandpass_order: 4
-  # window_s and bandpass_low_hz come from the active stimulus profile
+emotiv:
+  cortex_url: wss://localhost:6868
+  profile: flick-pilot       # Emotiv training profile name
+  headset_id: auto
+  streams: [pow, com, fac, dev, eq]
+  occipital_sensors: [O1, O2]
+  min_contact_quality: 3     # dev stream, 0..4; below this a sensor is flagged
 
 stimulus:
-  profile: auto              # auto | hi | lo
-  tile_layout: cross
-  tile_px: 320
+  expected_refresh_hz: 165
+  flicker_hz: 15.0           # exact divisor of 165, 120 and 60
   contrast: 0.85
-  cue_duration_s: 1.0
+  tile_layout: row
+  tile_px: 300
+  tile_gap_px: 120
   label_font_px: 34
+  cue_duration_s: 1.5        # labels shown, nothing moving, before the first slot
   integrity_drop_threshold: 5
-
-  profiles:
-    hi:
-      min_refresh_hz: 120
-      render: sinusoid
-      frequencies: [8.0, 9.6, 11.4, 13.2, 15.0]
-      phases:      [0.0, 1.5707963, 3.1415927, 4.7123890, 0.0]
-      cancel_idx: 4
-      window_s: 1.25
-      bandpass_low_hz: 6.0
-      fbcca_subband_low_hz: [6, 14, 22, 30, 38]
-    lo:
-      min_refresh_hz: 0
-      render: divisor        # exact divisors of 60: 9, 8, 7, 5, 6
-      frequencies: [6.667, 7.5, 8.571, 12.0, 10.0]
-      phases:      [0.0, 1.5707963, 3.1415927, 4.7123890, 0.0]
-      cancel_idx: 4          # 10.0 Hz: alpha-adjacent, lowest-cost false positive
-      window_s: 2.0
-      bandpass_low_hz: 5.0
-      fbcca_subband_low_hz: [5, 12, 19, 26, 33]
-
-classify:
-  algorithm: auto            # auto | fbcca | etrca
-  harmonics: 3
-  fbcca:
-    n_subbands: 5
-    subband_high_hz: 48
-    weight_a: 1.25
-    weight_b: 0.25
-  etrca:
-    calibration_max_age_s: 7200
-    model_dir: ./data/calibration
+  cancel_idx: 3
+  scan:
+    slot_s: 2.0
+    max_cycles: 3            # then timeout → IDLE
+    flicker_active: true     # the highlighted tile also flickers
+  seq_flicker:
+    slot_s: 4.0              # Cortex pow covers the last 2 s, so a slot must exceed 2 s
+    gap_s: 1.0
+    max_cycles: 2            # stop after cycle 1 if the margin is already met
+    randomize_order: true
 
 decision:
-  rho_threshold: 0.35
-  margin_ratio: 1.15
-  dwell_windows: 3
-  refractory_s: 1.0
+  scan_switch:
+    command: push
+    power_threshold: 0.45    # com power, 0..1
+    hold_s: 0.5              # 4 consecutive com samples at 8 Hz
+    latency_comp_s: 0.3      # attribute the trigger to the slot active this long before its onset
+    refractory_s: 1.5
+    facial_action: clench    # used when mode.trigger = facial
+    facial_threshold: 0.5
+    contamination_threshold: 0.3   # fac power that marks a com trigger contaminated
+  seq_flicker:
+    band: betaL              # 12–16 Hz on Emotiv's pow stream
+    score_tail_s: 2.0        # slot_s − 2 s: where the 2 s pow window lies inside the slot
+    baseline_s: 20
+    z_threshold: 1.0
+    margin_ratio: 1.3
 
 calibration:
-  blocks: 5
-  trial_s: 3.0
-  rest_s: 1.0
+  neutral_trials: 3          # 8 s each, Cortex training
+  command_trials: 5
+  cued_block_trials: 20
+
+database:
+  memory_pool_max: 5
+  telemetry_pool_max: 3
+  query_timeout_s: 0.3       # memory reads; on timeout, serve from the mirror
+  write_timeout_s: 1.0
+  outbox_retry_s: 5.0
 
 graph:
-  db_path: ./data/kuzu
+  profile_id: user
   embedding_dim: 384
 
 retrieval:
@@ -414,7 +421,7 @@ retrieval:
   select_k: 8
 
 generation:
-  n_intents: 4
+  n_intents: 3
   n_candidates: 3
   max_tokens: 400
   timeout_s: 6.0
@@ -439,14 +446,14 @@ telemetry:
   queue_maxsize: 2000        # bounded; DROPS on overflow, never blocks
   flush_interval_ms: 500
   flush_batch: 500
-  eeg_downsample: 1
+  bandpower_downsample: 1
   compress_after: 10m
 
 spectator:
   enabled: true
   url: wss://<domain>/producer
   throttle_hz: 1.0
-  send_raw_eeg: false        # NEVER true
+  send_signal: false         # NEVER true
   send_graph_content: false
 
 privacy:
@@ -488,17 +495,20 @@ PIPER_MODEL_PATH=./models/en_US-lessac-medium.onnx
 
 EMBEDDING_PROVIDER=minilm
 
-TIMESCALE_DSN=
-
-SPECTATOR_URL=
-SPECTATOR_TOKEN=
+TIGER_DSN=
+LOCAL_PG_DSN=
 
 EMOTIV_CLIENT_ID=
 EMOTIV_CLIENT_SECRET=
 
+SPECTATOR_URL=
+SPECTATOR_TOKEN=
+
 DEMO_REPLAY=false
 LOCAL_MODE=false
 ```
+
+`TIGER_DSN` is the Tiger Cloud service connection string. `LOCAL_PG_DSN` points at a local `timescale/timescaledb-ha` container (it bundles pgvector) and is used by tests and by anyone developing offline.
 
 **Provider fallback chains** (`providers/registry.py`). Each link is skipped if its key is absent or its last call failed within 30 s:
 
@@ -506,9 +516,9 @@ LOCAL_MODE=false
 - STT: `deepgram` → `faster_whisper` → `manual`
 - TTS: `cache` → `elevenlabs` → `piper` → `browser SpeechSynthesis`
 
-**The last link in every chain never touches the network.** The backend therefore boots and serves a complete, correctly-shaped turn with no API keys at all.
+**The last link in every chain never touches the network.** The backend therefore boots and serves a complete, correctly-shaped turn with no API keys at all. With no `TIGER_DSN` either, the memory is loaded from the fixture into the mirror (§10.3) and writes stay in the outbox.
 
-**Local Mode** truncates every chain to its offline links, disables the spectator relay and routes telemetry to a local Postgres. Toggling requires no restart.
+**Local Mode** truncates every provider chain to its offline links, serves memory reads from the mirror and holds memory writes in the outbox, disables the spectator relay and pauses telemetry uploads. Toggling requires no restart.
 
 ---
 
@@ -516,7 +526,7 @@ LOCAL_MODE=false
 
 All schemas live in `shared/schemas.py` as pydantic v2 models, mirrored by hand in `frontend/src/lib/types.ts`. Every message carries `type` and `ts` (float, UNIX seconds).
 
-**These are frozen before any other work starts.** Everything in the system depends on them.
+**These are frozen before any other work starts.** Everything in the system depends on them. Revision 2 changes §6.1, §6.2, §6.4, §6.5 and §6.6; the code must follow AGENTS.md §4 to adopt them.
 
 ### 6.1 The selection contract
 
@@ -529,89 +539,138 @@ class Selection(BaseModel):
     trial_id: str                    # must match the current trial or it is dropped
     target_idx: int                  # 0..n_targets-1
     confidence: float                # 0..1, adapter-defined
-    source: str                      # "ssvep" | "keyboard" | "replay" | "emotiv"
-    algorithm: str | None            # "fbcca" | "etrca" | None
+    source: str                      # "bci" | "keyboard" | "replay"
+    algorithm: str | None            # "scan_switch" | "seq_flicker" | None
+    trigger: str | None = None       # "mental_command" | "facial" | None
+    contaminated: bool = False       # DEMO-6
 ```
 
 ### 6.2 ZMQ: P1 sensor → P3 backend (`bci.` prefix)
 
 ```python
-class EegChunk(BaseModel):          # ~4 Hz
-    type: Literal["bci.eeg"]
+class BandPowerFrame(BaseModel):    # 8 Hz, from Cortex pow
+    type: Literal["bci.bandpower"]
     ts: float
-    fs: int
-    channels: list[str]
-    data: list[list[float]]          # [8][n], microvolts, post-filter
-    railed: list[bool]
+    sensors: list[str]               # the 14 EPOC X sensors, Cortex order
+    bands: list[str]                 # ["theta","alpha","betaL","betaH","gamma"]
+    power: list[list[float]]         # [n_sensors][5], Cortex units
 
-class PsdFrame(BaseModel):          # ~4 Hz
-    type: Literal["bci.psd"]
+class CommandFrame(BaseModel):      # 8 Hz, from Cortex com + fac
+    type: Literal["bci.command"]
     ts: float
-    freqs: list[float]               # 0..48 Hz, 0.5 Hz bins
-    power: list[float]               # occipital mean, dB
-    peaks: list[float]               # power at each target frequency
+    action: str                      # "neutral" | "push" | ...
+    power: float                     # 0..1
+    facial_action: str | None        # strongest current fac action
+    facial_power: float              # 0..1, max over fac samples since last frame
 
-class TargetScores(BaseModel):      # 4 Hz
-    type: Literal["bci.scores"]
+class SlotScores(BaseModel):        # every pow sample during a trial
+    type: Literal["bci.slot_scores"]
     ts: float
-    algorithm: Literal["fbcca", "etrca"]
-    rho: list[float]
-    winner_idx: int
-    margin: float
-    above_threshold: bool
-    dwell_count: int
+    trial_id: str
+    algorithm: Literal["scan_switch", "seq_flicker"]
+    active_slot: int | None
+    cycle: int
+    scores: list[float | None]       # seq_flicker: z-score per target so far; scan_switch: None
+    trigger_power: float | None      # scan_switch: current com power
+    hold_count: int                  # consecutive qualifying samples
+    winner_idx: int | None
+    margin: float | None
+
+class SensorSelection(BaseModel):   # topic "bci.selection", event
+    """Emitted by P1 when its decision logic fires. The `bci` input
+    adapter (§7.2) maps this onto the generic `Selection` of §6.1."""
+    type: Literal["bci.selection"]
+    ts: float
+    trial_id: str
+    target_idx: int
+    score: float                     # trigger power, or winner z-score
+    margin: float | None
+    algorithm: Literal["scan_switch", "seq_flicker"]
+    trigger: Literal["mental_command", "facial"] | None
+    contaminated: bool
 
 class SensorStatus(BaseModel):      # 1 Hz
     type: Literal["bci.status"]
     ts: float
-    source: Literal["cyton", "synthetic", "replay"]
+    source: Literal["emotiv", "synthetic", "replay"]
     connected: bool
     configured: bool                 # has a stim.profile been received?
-    samples_received: int
+    headset_id: str | None
+    battery_pct: int | None
+    contact_quality: dict[str, int]  # sensor → 0..4, from dev
+    eeg_quality: float | None        # from eq
+    profile_loaded: bool             # Emotiv training profile active
+    trained_actions: list[str]
     dropped_samples: int
-    railed_channels: list[int]
 ```
 
-### 6.3 ZMQ: P3 → P2 stimulus (`stim.` prefix)
+### 6.3 WebSocket: dashboard → P3 (`client.` prefix)
+
+The only inbound channel. Everything else the dashboard sends goes over REST (§6.8); this exists for input that must be low-latency and ordered with the outbound stream.
+
+```python
+class KeyPress(BaseModel):
+    """Drives the `keyboard` input adapter (§7.4). Keys outside the
+    configured target count are dropped."""
+    type: Literal["client.key_press"]
+    ts: float
+    key: str                         # "1".."4"
+
+class RequestSnapshot(BaseModel):
+    """Sent on every (re)connect. P3 replies with graph.snapshot and one
+    sys.status so a reconnecting dashboard is immediately consistent."""
+    type: Literal["client.request_snapshot"]
+    ts: float
+```
+
+Inbound messages that fail validation are logged and dropped. The dashboard is never trusted to drive anything destructive; purge, mode changes and adapter swaps are REST endpoints so they are explicit and auditable.
+
+### 6.4 ZMQ: P3 → P2 stimulus (`stim.` prefix)
 
 ```python
 class ShowTargets(BaseModel):
     type: Literal["stim.show_targets"]
     ts: float
     trial_id: str
-    labels: list[str]
+    labels: list[str]                # n_targets, Cancel last
     round: Literal["intent", "candidate", "speller"]
-    cue_idx: int | None              # calibration only
+    cue_idx: int | None              # cued blocks only
 
 class StimControl(BaseModel):
     type: Literal["stim.control"]
     ts: float
-    action: Literal["idle", "start_flicker", "stop_flicker", "message"]
+    action: Literal["idle", "start", "stop", "confirm", "message"]
+    target_idx: int | None           # confirm: flash the selected tile
     message: str | None
 ```
 
-### 6.4 ZMQ: P2 → P3 (`stim.` prefix)
+### 6.5 ZMQ: P2 → P1, P3 (`stim.` prefix)
 
 ```python
 class StimulusProfile(BaseModel):
-    """Published once at startup after measuring the real refresh rate.
-    P3 relays it to P1, which reconfigures before its first classification."""
+    """Published at startup after measuring the real refresh rate."""
     type: Literal["stim.profile"]
     ts: float
-    profile: Literal["hi", "lo"]
     measured_refresh_hz: float
-    frequencies: list[float]
-    phases: list[float]
+    flicker_hz: float
+    frames_per_cycle: float          # 11.0 at 165 Hz, 4.0 at 60 Hz
+    exact: bool                      # frames_per_cycle within 1% of an integer
+    selection: Literal["scan_switch", "seq_flicker"]
+    slot_s: float
+    gap_s: float
+    n_targets: int
     cancel_idx: int
-    window_s: float
-    bandpass_low_hz: float
-    fbcca_subband_low_hz: list[float]
 
-class StimulusOnset(BaseModel):
-    type: Literal["stim.onset"]
-    ts: float                        # LSL-corrected
+class StimulusSlot(BaseModel):
+    """One per slot, published in the frame the slot starts."""
+    type: Literal["stim.slot"]
+    ts: float
     trial_id: str
-    frequencies: list[float]
+    cycle: int
+    slot_idx: int                    # position in this cycle's order
+    target_idx: int                  # which tile is active
+    flicker: bool
+    duration_s: float
 
 class StimulusIntegrity(BaseModel):
     type: Literal["stim.integrity"]
@@ -621,16 +680,17 @@ class StimulusIntegrity(BaseModel):
     frame_interval_std_ms: float
 ```
 
-### 6.5 WebSocket: P3 → dashboard
+### 6.6 WebSocket: P3 → dashboard
 
 Envelope `{"type": ..., "ts": ..., "payload": {...}}`.
 
 | `type` | Rate | Payload |
 |---|---|---|
-| `eeg.trace` | 4 Hz | `{channels, data, fs}` |
-| `eeg.psd` | 4 Hz | `{freqs, power, peaks}` |
-| `bci.scores` | 4 Hz | mirrors `TargetScores` |
-| `input.selection` | event | `{target_idx, label, round, confidence, source}` |
+| `eeg.bandpower` | 4 Hz | `{sensors, bands, power}` (P3 downsamples P1's 8 Hz) |
+| `bci.command` | 8 Hz | mirrors `CommandFrame` |
+| `bci.slot_scores` | 8 Hz during trials | mirrors `SlotScores` |
+| `stim.slot` | event | `{trial_id, cycle, target_idx, flicker}` |
+| `input.selection` | event | `{target_idx, label, round, confidence, source, algorithm, trigger, contaminated}` |
 | `conv.transcript` | event | `{speaker, text, partner_id, partner_name, confidence}` |
 | `conv.intents` | event | `{trial_id, labels}` |
 | `conv.candidates` | event | `{trial_id, candidates, grounding}` |
@@ -639,11 +699,15 @@ Envelope `{"type": ..., "ts": ..., "payload": {...}}`.
 | `graph.activate` | event | `{node_ids, edge_ids, reason}` |
 | `graph.bloom` | event | `{nodes, edges}` |
 | `fsm.state` | event | `{state, detail}` |
-| `sys.status` | 1 Hz | `{input_source, input_badge, source, connected, replay, local_mode, profile, measured_refresh_hz, providers, stimulus_integrity, telemetry_dropped}` |
-| `analytics.summary` | 2 s | `{accuracy_pct, mean_rho_by_target, selections_total, mean_selection_latency_s, itr_bits_per_min, drift}` |
+| `sys.status` | 1 Hz | `{input_source, input_badge, source, connected, replay, local_mode, selection, measured_refresh_hz, battery_pct, contact_quality, profile_loaded, providers, stimulus_integrity, memory_store, telemetry_dropped}` |
+| `analytics.summary` | 2 s | `{accuracy_pct: float \| null, itr_bits_per_min: float \| null, cued_trials: int, mean_score_by_target, selections_total, mean_selection_latency_s, contaminated_pct, facts_learned_last_10m}` |
 | `privacy.flow` | event | `{stage, destination, bytes, description}` |
 | `privacy.cost` | event | `{turn_id, items, turn_usd, session_usd}` |
 | `spectator.link` | on connect | `{url, connected_viewers}` |
+
+`sys.status.memory_store` is `"tiger" | "mirror" | "fixture"` so the dashboard shows when the memory is being served from cache.
+
+### 6.7 Graph payload types
 
 ```python
 class GraphNode(BaseModel):
@@ -661,39 +725,50 @@ class GraphEdge(BaseModel):
     weight: float
 ```
 
-### 6.6 REST
+**`label` derivation.** Every node except `Memory` has `name`; `Memory` has `text`. `GraphService.snapshot()` derives:
+
+```python
+label = row["name"] or row["text"][:60]
+```
+
+Memory text is truncated to 60 characters because it is rendered on a 3D node, not read. The `nodes` table's CHECK constraint (§10.1) guarantees one of the two is present.
+
+### 6.8 REST
 
 | Method | Path | Body | Purpose |
 |---|---|---|---|
-| `GET` | `/api/health` | — | liveness + provider status |
+| `GET` | `/api/health` | — | liveness + provider + database status |
 | `GET` | `/api/graph` | — | full snapshot |
-| `POST` | `/api/onboarding/seed` | `{bio, name}` | bio → seeded graph |
+| `POST` | `/api/onboarding/seed` | `{bio, name}` | bio → seeded memory |
 | `GET` | `/api/onboarding/status` | — | `{seeded, node_count}` |
 | `POST` | `/api/partner` | `{partner_id}` | manual override |
 | `POST` | `/api/utterance` | `{text}` | scripted-prompt advance |
 | `POST` | `/api/mode` | `{mode}` | intent \| speller |
 | `POST` | `/api/input` | `{adapter}` | hot-swap the input adapter |
-| `POST` | `/api/calibration/start` | — | run an eTRCA block |
+| `POST` | `/api/selection_method` | `{selection, trigger}` | scan_switch \| seq_flicker; mental_command \| facial |
+| `POST` | `/api/training/start` | `{action, trials}` | Cortex training: `neutral` or `push` |
+| `GET` | `/api/training/status` | — | trained actions, last training time |
+| `POST` | `/api/cued_block/start` | `{n_trials}` | run cued trials (§18.6) |
 | `GET` | `/api/session/latest` | — | most recent recording |
 | `GET` | `/api/analytics/summary` | — | continuous-aggregate rollup |
+| `GET` | `/api/memory/timeline` | `?since=` | memory_events, newest first (§18.5) |
 | `POST` | `/api/privacy/local_mode` | `{enabled}` | toggle, no restart |
 | `GET` | `/api/privacy/flows` | — | what has left the machine |
 | `POST` | `/api/privacy/purge` | `{scope}` | delete stored personal data |
 | `GET` | `/api/spectator/link` | — | public URL + QR payload |
 
 ---
-
 ## 7. The input layer
 
-**This is the abstraction that decouples every other subsystem from the EEG hardware.** Nothing downstream of `InputSource` knows or cares how a selection was produced.
+**This is the abstraction that decouples every other subsystem from the headset.** Nothing downstream of `InputSource` knows or cares how a selection was produced — which is why the hardware change in revision 2 touches P1, P2 and this section, and nothing in the conversation pipeline.
 
 ### 7.1 Interface
 
-`inputs/base.py`:
+`inputs/base.py` (unchanged):
 
 ```python
 class InputSource(ABC):
-    name: str                        # "keyboard", "ssvep", ...
+    name: str                        # "keyboard", "bci", "replay"
     badge: str | None                # UI badge text; None for the production path
     n_targets: int
     supports_labels: bool            # can the adapter display text on targets?
@@ -707,8 +782,7 @@ class InputSource(ABC):
     @abstractmethod
     async def set_targets(self, trial_id: str, labels: list[str],
                           round: str) -> None:
-        """Present n_targets options. For adapters that cannot render labels,
-        the orchestrator is responsible for surfacing them elsewhere."""
+        """Present n_targets options."""
 
     @abstractmethod
     def selections(self) -> AsyncIterator[Selection]:
@@ -719,116 +793,151 @@ class InputSource(ABC):
         return {}
 ```
 
-The orchestrator (§14) holds exactly one `InputSource`. Swapping adapters is a config change or a `POST /api/input`; no other code changes.
+The orchestrator (§13) holds exactly one `InputSource`. Swapping adapters is a config change or a `POST /api/input`; no other code changes.
 
-### 7.2 `keyboard` — the development adapter
+### 7.2 `bci` — the production adapter
 
-**Build this first. It unblocks the entire team.**
+Renamed from `ssvep`. Subscribes to `SensorSelection` (`bci.selection`, §6.2) on ZMQ 5555 and maps it onto `Selection` with `source: "bci"`, carrying `score` through as `confidence` (clamped to 0..1), and `algorithm`, `trigger` and `contaminated` through unchanged. Calls `set_targets` by publishing `stim.show_targets` on 5556.
 
-Listens for number keys 1–5 in the dashboard and emits a `Selection` with `confidence: 1.0` and `source: "keyboard"`. Dashboard shows a persistent orange **`KEYBOARD INPUT`** badge (DEMO-3).
+`badge` is `None` when the selection method is `seq_flicker`, or `scan_switch` with `trigger: mental_command`. It is **`MUSCLE TRIGGER (EMG)`** when `trigger: facial` (DEMO-3).
 
-With this adapter, the full conversational pipeline — STT, retrieval, generation, TTS, graph writeback, every visualisation — is buildable and testable with no headset, no gel, no Cortex, and no signal processing in existence. Three of four people can work all weekend without touching hardware.
+### 7.3 The selection methods
 
-It is a development tool. It is never used in front of judges.
+Both methods use **sequential presentation**: the four tiles are shown with their labels, then activated one at a time. They differ in what decides the selection.
 
-### 7.3 `ssvep` — the production adapter
+**`scan_switch` (default).** The active tile is highlighted (and flickers at 15 Hz when `flicker_active`). The user fires one trained mental command — `push`, trained on *attempted movement of one arm* — while their tile is active. P1 attributes the trigger to the tile that was active `latency_comp_s` before the trigger's onset. If no trigger arrives in `max_cycles` passes, the trial times out to IDLE.
 
-Subscribes to `bci.selection` on ZMQ 5555, forwards as `Selection` with `source: "ssvep"`. Calls `set_targets` by publishing `stim.show_targets` on 5556. `badge` is `None`. This is the real path.
+This is **switch scanning**, the standard access method in augmentative communication for people with a single reliable movement, and the method used by an implanted-BCI ALS participant who spelled by attempting a hand grasp as a click (Candrea et al., 2024). Detecting one command against rest is far easier than telling several apart, which is why it is the default.
 
-### 7.4 `replay` — the demo fallback
+**`seq_flicker` (pure-EEG mode).** Only the active tile flickers. Every tile flickers at the **same** 15 Hz, so no frequency discrimination is needed — which is the point, because band power cannot separate 8 Hz from 9.6 Hz. The user keeps looking at the tile they want; when that tile is active, it is on the fovea and the occipital 15 Hz response is at its strongest. P1 compares occipital low-beta power across the slots and picks the strongest if it clears threshold and margin.
 
-Drives the sensor process's `replay` source, so a recorded session flows through the **real classifier** and produces genuine selections. Badge: **`REPLAY — recorded HH:MM`**.
+It is slower (≈20 s for one pass of four slots at 4 s + 1 s gap) and its accuracy on free-tier band power is unproven, so it is gated (§7.6). Its value is that it involves no muscle and no training: everything a judge sees is visual cortex.
 
-This is the honest crash-insurance (DEMO-1, DEMO-2). If the live demo fails, you say the room is electrically noisy and show a session recorded an hour ago. Every number a judge sees is real.
+**Speller** uses `scan_switch` over a row/column grid. `seq_flicker` is never used for the speller — it is too slow per decision.
 
-### 7.5 `emotiv` — optional secondary path
+### 7.4 `keyboard` — the development adapter
 
-The EPOC X exposes band power (theta / alpha / betaL / betaH / gamma per sensor) and facial expressions through the free Cortex tier. Raw EEG is licence-gated and unavailable.
+Listens for number keys 1–4 in the dashboard and emits a `Selection` with `confidence: 1.0` and `source: "keyboard"`. Dashboard shows a persistent orange **`KEYBOARD INPUT`** badge (DEMO-3).
 
-Two sub-modes, both gated on an offline feasibility test producing ≥80% accuracy at p<0.05:
+With this adapter the full conversational pipeline — STT, retrieval, generation, TTS, memory writeback, every visualisation — is buildable and testable with no headset. It is a development tool. It is never used in front of judges.
 
-- **`emotiv_bandpower`** — targets at 6 Hz (theta), 15 Hz (betaL), 20 Hz (betaH) on a separate stimulus surface; classification by nearest-centroid on the baseline-normalised 20-dimensional posterior band-power vector. Latency 3–4 s. Badge: **`EMOTIV BAND POWER`**.
-- **`emotiv_wink`** — `winkL` / `winkR` from the Facial Expressions stream. Two targets, near-deterministic, ~10 minutes to build. **This is EOG/EMG, not EEG, and the UI badge and the pitch must both say so**: **`EMOTIV — MUSCLE (EOG/EMG)`**.
+### 7.5 `replay` — the demo fallback
 
-Neither is on the critical path. Neither is built before the OpenBCI path works. If the feasibility test fails, `emotiv_wink` remains available as a two-target input and the band-power mode is dropped.
+Drives the sensor process's `replay` source, so a recorded session's Cortex streams flow through the **real decision logic** and produce genuine selections. Badge: **`REPLAY — recorded HH:MM`**.
 
-**Do not drive the Speller with a two-target adapter.** Binary search over 28 symbols needs five decisions per character, and errors compound multiplicatively: at 95% per decision you get a clean five-letter word about a quarter of the time. Two-target adapters are for yes/no confirmation and scan-and-select, where one error costs one retry.
+This is the honest crash insurance (DEMO-1, DEMO-2). If the live demo fails, say so and show a session recorded an hour ago. Every number a judge sees is real.
 
-### 7.6 Badge rule
+### 7.6 Feasibility gate
 
-`sys.status.input_badge` is rendered by `StatusBar.tsx` in high contrast whenever non-null. The production `ssvep` adapter is the only one with a null badge. This is how DEMO-1 and DEMO-3 are enforced in code rather than in discipline.
+Run `scripts/feasibility.py` with the pilot wearing the headset, as early as possible. It runs 20 cued trials per method with four targets (chance = 25%) and prints accuracy, a binomial p-value, mean selection time and the contaminated fraction.
+
+| Result | Decision |
+|---|---|
+| `scan_switch` (mental command) ≥ 80%, p < 0.05, contaminated < 20% | Production default. |
+| `scan_switch` (mental command) fails | Retrain once (§8.2). If it still fails, use `trigger: facial` with the `MUSCLE TRIGGER (EMG)` badge — honest, and still a real assistive method. |
+| `seq_flicker` ≥ 60%, p < 0.05 | Offered as the pure-EEG mode in the demo. |
+| `seq_flicker` fails | Dropped from the demo; mentioned in the pitch as tested. |
+
+Record the numbers in `CHANGELOG.md`. The pitch quotes these measured numbers and nothing else.
+
+`experiments/seq_flicker/` implements the `seq_flicker` half of this gate as a standalone tool (three tiles, blocked runs, baseline, signal check and control run); its `TEST_PLAN.md` holds the protocol and pass rules. With three tiles, chance is 33% and the bar is the same ≥ 60%, p < 0.05.
+
+### 7.7 Experimental: two-command attempted movement
+
+Left arm vs right arm (or legs) as two separate commands, with tied limbs for the demo. **Not on the critical path, not built unless both gates above pass with time to spare.** Two reasons:
+
+- The EPOC X has no C3/C4, where hand motor activity is normally read. A 2025 study of multiclass motor imagery on the EPOC X measured test accuracy of 17–36% — near chance.
+- A tied-up person attempting to move tenses jaw, neck and face. Emotiv's classifier can learn that muscle activity. DEMO-6 would flag it, which is correct, but it undermines the claim.
+
+A single command (§7.3) keeps the attempted-movement story with a far better chance of working. If a Cyton becomes available, §8.7 covers the upgrade path.
+
+### 7.8 Badge rule
+
+`sys.status.input_badge` is rendered by `StatusBar.tsx` in high contrast whenever non-null. Only the `bci` adapter using `seq_flicker` or a mental-command trigger has a null badge. This is how DEMO-1 and DEMO-3 are enforced in code rather than in discipline.
 
 ---
 
 ## 8. Sensor process (P1)
 
-### 8.1 Acquisition
+### 8.1 Cortex connection
 
-`sources/cyton.py` uses BrainFlow with `BoardIds.CYTON_BOARD`. Serial port autodetection enumerates ports and picks the first matching `FTDI`/`usbserial`; `config.eeg.serial_port` overrides.
+`sources/cortex.py` speaks Cortex's JSON-RPC over `wss://localhost:6868` (served by the EMOTIV Launcher). Startup sequence, each step logged:
 
-A dedicated thread calls `get_board_data()` every 100 ms and appends to a 5-second ring buffer. **That thread does nothing else** — no filtering, no classification, no I/O.
+1. `requestAccess` → `authorize` (client id/secret from `.env`) → cortex token
+2. `queryHeadsets`; `controlDevice` `connect` if needed; pick `emotiv.headset_id` or the first
+3. `createSession` (active)
+4. `setupProfile` `load` for `emotiv.profile` (needed for meaningful `com`)
+5. `subscribe` to `emotiv.streams`
 
-On `prepare_session()` failure, log and fall back to `synthetic` with a loud warning.
+A dedicated asyncio task reads the socket and does nothing else — no decision logic, no I/O. Samples go onto an in-process queue. On failure at any step, log and fall back to `synthetic` with a loud warning and the `SYNTHETIC SIGNAL` badge.
 
-### 8.2 Filtering
+Streams and their use:
 
-Applied per extracted window, never to the ring buffer:
+| Stream | Rate | Used for |
+|---|---|---|
+| `pow` | 8 Hz | `seq_flicker` scoring; dashboard band-power plot; telemetry |
+| `com` | 8 Hz | `scan_switch` trigger |
+| `fac` | 32 Hz | `facial` trigger; contamination flag (DEMO-6) |
+| `dev` | 2 Hz | contact quality per sensor, battery |
+| `eq` | 2 Hz | overall signal quality |
 
-1. Per-channel mean removal
-2. IIR notch at 60 Hz, `iirnotch(60, Q=30, fs=250)`, via `filtfilt`
-3. 4th-order Butterworth bandpass from `profile.bandpass_low_hz` to 48.0 Hz, `sos` form, via `sosfiltfilt`
-4. Common average reference across the 8 channels
+`pow` values are in Cortex's own units. Nothing compares them across sessions; `seq_flicker` z-scores them against the session's own baseline.
 
-Zero-phase filtering is mandatory: SSVEP classification depends on phase relationships and a causal filter's group delay smears them.
+### 8.2 Mental-command training
 
-### 8.3 Classification
+`training.py` wraps the Cortex `training` method: `start` → Cortex runs an 8 s recording → `accept`. `scripts/train_command.py` and `POST /api/training/start` drive it.
 
-```python
-class Classifier(ABC):
-    @abstractmethod
-    def score(self, window: np.ndarray) -> np.ndarray:
-        """window: (n_channels, n_samples), filtered. Returns (n_targets,)."""
-```
+Protocol, about 10 minutes:
 
-**FBCCA.** For each sub-band `m` in 0..4, bandpass between `profile.fbcca_subband_low_hz[m]` and 48 Hz. For each target `f_k`, build reference matrix `Y_k` of shape `(2*harmonics, n_samples)` containing `sin(2πhf_k t)`, `cos(2πhf_k t)` for `h` in 1..3. Compute the first canonical correlation `ρ_{m,k}` using a direct SVD implementation, not `sklearn.CCA` — this runs 100 CCAs per second and the direct form is roughly 20× faster.
+1. `neutral` × `neutral_trials`: relaxed, eyes on the screen, **face slack**
+2. `push` × `command_trials`: attempt to move the right arm against the restraint, **face slack**
+3. Save the profile
 
-Combine: `ρ_k = Σ_m w(m) · ρ²_{m,k}` where `w(m) = (m+1)^(-1.25) + 0.25`.
+Say "face slack" out loud before every `push` trial. The classifier learns whatever differs between neutral and push; if the jaw clenches during push, it learns the jaw. DEMO-6 exists to catch this.
 
-`fbcca.py` holds no frequency constants. Everything comes from `stim.profile`.
-
-**eTRCA.** Per target, compute the spatial filter maximising inter-trial over intra-trial covariance; the ensemble filter concatenates all per-target filters. At test time, correlate the spatially-filtered window against each target's trial-averaged template, combined with an FBCCA term at 0.3 weight. Persisted to `data/calibration/{pilot}_{ts}.npz`.
-
-**Selection.** With `algorithm: auto`, use eTRCA if a calibration file exists for the active pilot under `calibration_max_age_s`; otherwise FBCCA. Log the choice; do not surface it in the UI.
-
-### 8.4 Synthetic source
-
-Must produce signals a real classifier genuinely has to solve. At 250 Hz across 8 channels:
-
-- **Pink noise** at 15 µV RMS
-- **Alpha bump** at 10 Hz, 8 µV, amplitude-modulated by a slow random walk. The `hi` profile excludes 10.0 Hz for this reason; the `lo` profile parks it on the Cancel tile.
-- **SSVEP**: when an attended target is set, inject `A · Σ_h (1/h) · sin(2πh f t + φ_h)` with `A` ramping to 3 µV over 400 ms. O1/Oz/O2/POz get full amplitude, PO3/PO4 get 0.7×, Pz/CPz get 0.4×.
-- **60 Hz line noise** at 20 µV, so the notch filter is exercised
-- **Blink artifacts** on a Poisson schedule (~1 per 8 s): 300 ms, 80 µV, weighted frontally
-
-Exposes `set_attended_target(idx | None)`.
-
-`tests/test_fbcca.py` asserts ≥95% accuracy over 200 synthetic windows at 3 µV, and ≤2% false positives with no attended target.
-
-### 8.5 Decision state machine
+### 8.3 `scan_switch` decision
 
 ```
-IDLE ──(above_threshold and margin_ok)──► DWELL(winner, 1)
-DWELL(w,n) ──(same winner, still ok)──► DWELL(w, n+1)
-DWELL(w,n) ──(different winner or below threshold)──► IDLE
-DWELL(w, dwell_windows) ──► emit Selection ──► REFRACTORY
-REFRACTORY ──(refractory_s elapsed)──► IDLE
+IDLE ──(stim.slot for a trial)──► ARMED
+ARMED ──(com.action == command and com.power >= power_threshold)──► HOLD(1)
+HOLD(n) ──(still qualifying)──► HOLD(n+1)
+HOLD(n) ──(not qualifying)──► ARMED
+HOLD(hold_s × 8) ──► emit SensorSelection ──► REFRACTORY
+REFRACTORY ──(refractory_s elapsed)──► ARMED or IDLE
 ```
 
-`above_threshold` is `rho[winner] >= rho_threshold`. `margin_ok` is `rho[winner]/rho[second] >= margin_ratio`. **Both are required.** The threshold alone is insufficient — noise pushes several correlations up together, and the margin test is what makes the idle state credible when a judge looks at the screen.
+- **Attribution.** `t_onset` is the timestamp of the first sample of the qualifying run. The selected target is the one whose `stim.slot` was active at `t_onset − latency_comp_s`.
+- **Facial trigger.** With `mode.trigger: facial`, the same machine runs on `fac` with `facial_action` / `facial_threshold`.
+- **Contamination.** A mental-command selection is `contaminated` if any `fac` sample during the hold run has power ≥ `contamination_threshold`. It is still emitted — hiding it would be worse — but flagged everywhere.
+
+### 8.4 `seq_flicker` decision
+
+1. **Baseline.** At session start, and after each cued block, record `baseline_s` of eyes-open rest. Per occipital sensor, store the mean and standard deviation of `band` power.
+2. **Per slot.** Average `band` power over O1 and O2 for the pow samples in the final `score_tail_s` of the slot. Cortex computes each pow sample from the **last 2 s** of EEG (Cortex API docs), so only samples at least 2 s after onset see the slot alone; with a 4 s slot that is 2 s, 16 samples. Convert log power to z against the baseline.
+3. **Per target.** Mean of that target's slot z-scores across cycles so far.
+4. **Decide** after each cycle: winner = argmax. Select if `z[winner] ≥ z_threshold` **and** `z[winner] − z[second] ≥ margin_ratio − 1` in baseline standard deviations. Otherwise run another cycle, up to `max_cycles`, then no selection.
+
+Both conditions are required, for the same reason as before: noise pushes several slots up together, and the margin test is what makes the idle state credible.
+
+`gap_s` between slots is blank so the band-power window can settle.
+
+### 8.5 Synthetic source
+
+Must produce data the real decision logic has to work for:
+
+- **pow**: log-normal band power per sensor with a slow random walk; alpha elevated and variable. When a target is attended and its tile is flickering, occipital betaL rises by a configurable effect size (default 0.8 baseline SD) ramping over 600 ms; other sensors unchanged.
+- **com**: `neutral` with power noise around 0.1; when a synthetic intent fires, `push` power ramps to 0.7 for 0.8 s. Occasional spurious `push` spikes shorter than `hold_s`.
+- **fac**: random blinks; optional jaw-clench episodes, some overlapping `push`, so the contamination flag is exercised.
+
+Exposes `set_attended_target(idx | None)` and `fire_command()`. `tests/test_scan_switch.py` and `tests/test_seq_flicker.py` assert ≥95% correct attribution on synthetic data and ≤2% selections with no intent.
 
 ### 8.6 Recorder
 
-Always on. Writes `data/sessions/{ISO8601}.npz` with the raw unfiltered buffer, timestamps, all received onset markers, and a JSON sidecar of the config in force. Directly loadable by `sources/replay.py`; this is what makes DEMO-2 possible.
+Always on. Writes `data/sessions/{ISO8601}.jsonl`: every Cortex sample as received, every `stim.slot`, every selection, and a JSON sidecar of the config in force. Directly loadable by `sources/replay.py`; this is what makes DEMO-2 possible.
+
+### 8.7 Contingency: OpenBCI Cyton
+
+If the gates in §7.6 fail and a Cyton is available: add `sources/cyton.py` (BrainFlow, 250 Hz raw) and a raw-EEG scorer for `seq_flicker` that uses canonical correlation at 15 Hz and its harmonics on O1/Oz/O2 instead of band power. Everything above the `SensorSelection` contract stays as it is. Not specified further unless triggered.
 
 ---
 
@@ -836,196 +945,195 @@ Always on. Writes `data/sessions/{ISO8601}.npz` with the raw unfiltered buffer, 
 
 ### 9.1 Rendering
 
-PsychoPy `visual.Window(fullscr=True, waitBlanking=True, useFBO=True, winType='pyglet')`. Vsync-locked; one `win.flip()` per loop iteration.
+PsychoPy `visual.Window(fullscr=True, waitBlanking=True, useFBO=True, winType='pyglet')` on the 165 Hz panel. Vsync-locked; one `win.flip()` per loop iteration.
 
-Luminance is always a **sinusoid sampled at frame boundaries**:
+Luminance of a flickering tile is a sinusoid sampled at frame boundaries:
 
 ```
-L_k(n) = 0.5 * (1 + contrast * sin(2π f_k n / refresh_hz + φ_k))
+L(n) = 0.5 * (1 + contrast * sin(2π · flicker_hz · n / refresh_hz))
 ```
 
-Square-wave flicker spreads energy across harmonics and makes adjacent frequencies harder to separate. Sinusoidal keeps the spectrum concentrated at the fundamental, which is what CCA looks for.
+At 165 Hz, 15 Hz is exactly 11 frames per cycle; at 60 Hz it is exactly 4. The sinusoid keeps the energy at the fundamental.
 
-### 9.2 Refresh profiles
+### 9.2 Refresh check
 
 `profile.py` runs before the first trial:
 
 1. Render 300 blank frames, discarding the first 60
 2. `measured_refresh_hz = 1 / median_frame_interval`
-3. Select `hi` if `>= 120`, else `lo`
+3. `frames_per_cycle = measured_refresh_hz / flicker_hz`; `exact` if within 1% of an integer
 4. Publish `stim.profile`
 
-**Do not trust what the OS reports.** Measure it. A panel set to 165 Hz actually delivering 60 because of a dock or power profile is a failure that looks exactly like a broken classifier.
-
-| | `hi` | `lo` |
-|---|---|---|
-| Trigger | measured ≥ 120 Hz | < 120 Hz |
-| Frequencies | 8.0, 9.6, 11.4, 13.2, 15.0 | 6.667, 7.5, 8.571, 12.0, 10.0 |
-| Divisors of 60? | no | yes: 60/9, 60/8, 60/7, 60/5, 60/6 |
-| Cancel tile | 15.0 Hz | **10.0 Hz** |
-| Window | 1.25 s | 2.0 s |
-| Bandpass floor | 6.0 Hz | 5.0 Hz |
-| Min target spacing | 1.4 Hz | 0.83 Hz |
-
-Three notes on `lo`:
-
-**Exact divisors.** At 60 Hz there are only about nine usable divisor frequencies in the SSVEP band, so the set is forced. Rendering on exact divisors gives zero quantisation error, which partly offsets everything else being worse.
-
-**Wider window.** `lo` frequencies sit as close as 0.83 Hz apart. A 1.25 s window resolves 0.80 Hz — no margin. At 2.0 s the resolution is 0.50 Hz. The cost is ~2.75 s per selection instead of 2.0 s. That is the honest price of a 60 Hz panel.
-
-**10.0 Hz on Cancel, deliberately.** Resting alpha peaks near 10 Hz and will occasionally false-trigger a 10 Hz target. The divisor grid gives no way to avoid that region while fitting five targets, so it goes on the tile whose false positive is harmless — Cancel just returns to idle.
-
-**Harmonic collision rule.** For every pair of targets, no 2× or 3× harmonic of one may land within 0.5 Hz of another's fundamental. Both shipped sets satisfy this. Changing one frequency without re-checking the whole matrix silently degrades two targets at once and looks like a hardware fault. `tests/test_profiles.py` enforces it.
+**Do not trust what the OS reports.** A panel set to 165 Hz delivering 60 because of a power profile or a display cable is a failure that looks exactly like a bad signal. 15 Hz stays exact at 60 and 120 Hz too, so a lower refresh still works — but log a WARNING whenever the measured rate is not `expected_refresh_hz`.
 
 ### 9.3 Tile layout
 
 ```
-            ┌───────────┐
-            │  TILE 0   │   f[0]
-            └───────────┘
- ┌──────────┐           ┌──────────┐
- │ TILE 2   │           │ TILE 1   │   f[2] / f[1]
- └──────────┘           └──────────┘
-            ┌───────────┐
-            │  TILE 3   │   f[3]
-            └───────────┘
-            ┌───────────┐
-            │  CANCEL   │   f[cancel_idx]
-            └───────────┘
+┌────────┐   ┌────────┐   ┌────────┐   ┌────────┐
+│ TILE 0 │   │ TILE 1 │   │ TILE 2 │   │ CANCEL │
+└────────┘   └────────┘   └────────┘   └────────┘
 ```
 
-Each tile is `tile_px` square with its label rendered at **constant luminance** — the text does not flicker. Flickering text is unreadable and destroys the paradigm. Minimum 120 px between tiles to limit spatial crosstalk.
-
-Tile index → frequency mapping comes from the active profile. Nothing downstream of `profile.py` hardcodes a frequency.
+A single row reads left to right, which is the order of a scan. Each tile is `tile_px` square with `tile_gap_px` between tiles to limit spatial crosstalk. Labels are rendered at **constant luminance** — text never flickers. The active tile gets a bright border in both methods.
 
 ### 9.4 Trial sequence
 
 1. Receive `stim.show_targets`; render labels on static tiles
-2. `cue_duration_s` with no flicker, so the pilot can read and decide
-3. Begin flicker; publish `stim.onset` and push an LSL marker in the same frame
-4. Continue until `stop_flicker`
-5. Briefly highlight the selected tile (400 ms solid), return to idle
+2. `cue_duration_s` with nothing moving, so the pilot can read and decide
+3. For each cycle and each slot in order (fixed for `scan_switch`, shuffled per cycle for `seq_flicker` when `randomize_order`): highlight, start flicker if applicable, publish `stim.slot` in the same frame, hold for `slot_s`, then `gap_s` blank
+4. Continue until `stop`, or `max_cycles` is reached
+5. On `confirm`, show the selected tile solid for 400 ms, return to idle
+
+For cued blocks, the cued tile has a distinct outline during the cue phase.
 
 ### 9.5 Integrity monitoring
 
 `integrity.py` records every flip interval and publishes `stim.integrity` once per second: measured refresh, count of intervals exceeding 1.5× nominal, and interval standard deviation. Over `integrity_drop_threshold` drops in one second logs at ERROR.
 
-Frame drops are the number one silent killer of SSVEP accuracy. Without this metric you will debug the classifier when the problem is the renderer.
-
-`scripts/check_stimulus.py` runs the loop standalone for 30 s and prints a pass/fail verdict. **Run it on every machine that will show the stimulus, at hour 0.** If a machine cannot hold its nominal rate with near-zero drops, it is a development machine only — which is fine, because the synthetic source generates SSVEP independently of any display.
-
-### 9.6 LSL
-
-`markers.py` creates `StreamOutlet(StreamInfo("Flick-Markers", "Markers", 1, 0, "string", uid))`. Each onset pushes `f"onset:{trial_id}:{cue_idx}"`.
-
-No extra hardware; `pylsl` bundles `liblsl` and runs over loopback. It exists because eTRCA training needs sample-accurate alignment between stimulus onset and the EEG timeline, and hand-rolling that across two Python processes will be off by tens of milliseconds in ways that silently degrade the spatial filters.
+`scripts/check_stimulus.py` runs the loop standalone for 30 s and prints a pass/fail verdict. Run it at hour 0, with the GPU driver set to the discrete GPU for Python, and the panel at 165 Hz.
 
 ---
+## 10. Memory store — Tiger Data
 
-## 10. Graph service
+The user's profile and memory graph live in PostgreSQL on Tiger Cloud, in the same database as the conversation history and signal telemetry (§18). It replaces KuzuDB.
 
 ### 10.1 Schema
 
-Requires `kuzu >= 0.7`. Executed by `graph.py::ensure_schema()` on first run.
+`migrations/001_memory.sql`:
 
 ```sql
-CREATE NODE TABLE Person(
-  id STRING, name STRING, relationship STRING,
-  address_terms STRING[], notes STRING,
-  embedding DOUBLE[384], weight DOUBLE,
-  created_at TIMESTAMP, last_accessed TIMESTAMP,
-  PRIMARY KEY (id));
+CREATE EXTENSION IF NOT EXISTS timescaledb;
+CREATE EXTENSION IF NOT EXISTS vector;
 
-CREATE NODE TABLE Place(
-  id STRING, name STRING, notes STRING,
-  embedding DOUBLE[384], weight DOUBLE,
-  created_at TIMESTAMP, last_accessed TIMESTAMP, PRIMARY KEY (id));
+CREATE TABLE profiles (
+  id           TEXT PRIMARY KEY,               -- "user"
+  display_name TEXT NOT NULL,
+  bio          TEXT,                           -- what was shared at onboarding
+  shared_by    TEXT,                           -- self, or who shared it on their behalf
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT now());
 
-CREATE NODE TABLE Thing(
-  id STRING, name STRING, category STRING, notes STRING,
-  embedding DOUBLE[384], weight DOUBLE,
-  created_at TIMESTAMP, last_accessed TIMESTAMP, PRIMARY KEY (id));
+CREATE TABLE nodes (
+  id            TEXT PRIMARY KEY,
+  profile_id    TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  kind          TEXT NOT NULL CHECK (kind IN
+                  ('Person','Place','Thing','Activity','Need','Memory')),
+  name          TEXT,
+  text          TEXT,
+  attrs         JSONB NOT NULL DEFAULT '{}',   -- relationship, address_terms, category,
+                                               -- time_of_day, urgency, occurred_on,
+                                               -- source, notes
+  embedding     vector(384) NOT NULL,
+  weight        DOUBLE PRECISION NOT NULL DEFAULT 1.0,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_accessed TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK ((kind = 'Memory' AND text IS NOT NULL) OR (kind <> 'Memory' AND name IS NOT NULL)));
 
-CREATE NODE TABLE Activity(
-  id STRING, name STRING, time_of_day STRING, notes STRING,
-  embedding DOUBLE[384], weight DOUBLE,
-  created_at TIMESTAMP, last_accessed TIMESTAMP, PRIMARY KEY (id));
+CREATE INDEX nodes_profile ON nodes (profile_id, kind);
+CREATE INDEX nodes_embedding ON nodes USING hnsw (embedding vector_cosine_ops);
 
-CREATE NODE TABLE Need(
-  id STRING, name STRING, urgency STRING, notes STRING,
-  embedding DOUBLE[384], weight DOUBLE,
-  created_at TIMESTAMP, last_accessed TIMESTAMP, PRIMARY KEY (id));
+CREATE TABLE edge_rules (                      -- the allowed (kind, from, to) triples
+  kind     TEXT NOT NULL,
+  src_kind TEXT NOT NULL,
+  dst_kind TEXT NOT NULL,
+  PRIMARY KEY (kind, src_kind, dst_kind));
 
-CREATE NODE TABLE Memory(
-  id STRING, text STRING, occurred_on STRING, source STRING,
-  embedding DOUBLE[384], weight DOUBLE,
-  created_at TIMESTAMP, last_accessed TIMESTAMP, PRIMARY KEY (id));
+INSERT INTO edge_rules VALUES
+  ('KNOWS','Person','Person'),
+  ('LIKES','Person','Thing'), ('LIKES','Person','Activity'),
+  ('LIKES','Person','Place'), ('LIKES','Person','Person'),
+  ('DISLIKES','Person','Thing'), ('DISLIKES','Person','Activity'),
+  ('DISLIKES','Person','Place'),
+  ('NEEDS','Person','Need'), ('NEEDS','Person','Thing'),
+  ('LOCATED_AT','Thing','Place'), ('LOCATED_AT','Activity','Place'),
+  ('LOCATED_AT','Person','Place'),
+  ('DOES','Person','Activity'),
+  ('INVOLVES','Memory','Person'), ('INVOLVES','Memory','Place'),
+  ('INVOLVES','Memory','Thing'), ('INVOLVES','Memory','Activity'),
+  ('RELATES_TO','Thing','Thing'), ('RELATES_TO','Activity','Activity'),
+  ('RELATES_TO','Thing','Activity'), ('RELATES_TO','Need','Thing');
 
-CREATE REL TABLE KNOWS(FROM Person TO Person,
-  weight DOUBLE, count INT64, last_reinforced TIMESTAMP);
+CREATE TABLE edges (
+  id              TEXT PRIMARY KEY,
+  profile_id      TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  kind            TEXT NOT NULL,
+  src             TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+  dst             TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+  weight          DOUBLE PRECISION NOT NULL DEFAULT 1.0,
+  count           BIGINT NOT NULL DEFAULT 1,
+  strength        DOUBLE PRECISION,              -- LIKES / DISLIKES only, 0..1
+  last_reinforced TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (kind, src, dst));
 
-CREATE REL TABLE LIKES(
-  FROM Person TO Thing, FROM Person TO Activity,
-  FROM Person TO Place, FROM Person TO Person,
-  weight DOUBLE, count INT64, strength DOUBLE, last_reinforced TIMESTAMP);
-
-CREATE REL TABLE DISLIKES(
-  FROM Person TO Thing, FROM Person TO Activity, FROM Person TO Place,
-  weight DOUBLE, count INT64, strength DOUBLE, last_reinforced TIMESTAMP);
-
-CREATE REL TABLE NEEDS(
-  FROM Person TO Need, FROM Person TO Thing,
-  weight DOUBLE, count INT64, last_reinforced TIMESTAMP);
-
-CREATE REL TABLE LOCATED_AT(
-  FROM Thing TO Place, FROM Activity TO Place, FROM Person TO Place,
-  weight DOUBLE, count INT64, last_reinforced TIMESTAMP);
-
-CREATE REL TABLE DOES(FROM Person TO Activity,
-  weight DOUBLE, count INT64, last_reinforced TIMESTAMP);
-
-CREATE REL TABLE INVOLVES(
-  FROM Memory TO Person, FROM Memory TO Place,
-  FROM Memory TO Thing, FROM Memory TO Activity,
-  weight DOUBLE, count INT64, last_reinforced TIMESTAMP);
-
-CREATE REL TABLE RELATES_TO(
-  FROM Thing TO Thing, FROM Activity TO Activity,
-  FROM Thing TO Activity, FROM Need TO Thing,
-  weight DOUBLE, count INT64, last_reinforced TIMESTAMP);
+CREATE INDEX edges_src ON edges (src);
+CREATE INDEX edges_dst ON edges (dst);
 ```
 
-`LIKES` and `DISLIKES` are separate relation types rather than one signed edge: the LLM emits these far more reliably than a numeric valence, and `strength` (0..1) carries intensity where it matters.
+Node kinds, edge kinds and the allowed pairs are the same as the Kuzu schema they replace. Kind-specific columns moved into `attrs` so one table holds every kind; `GraphService.upsert_edge` checks `edge_rules` before inserting.
 
-The user is a `Person` with `id = "user"` and `relationship = "self"`. Everything hangs off that.
+`LIKES` and `DISLIKES` stay separate edge kinds rather than one signed edge: the LLM emits these far more reliably than a numeric valence, and `strength` carries intensity where it matters.
+
+The user is a `Person` with `id = "user"` and `attrs.relationship = "self"`. Everything hangs off that.
 
 ### 10.2 Operations
 
 ```python
 class GraphService:
-    def ensure_schema(self) -> None
-    def seed_from_json(self, payload: dict) -> SeedResult
-    def snapshot(self) -> tuple[list[GraphNode], list[GraphEdge]]
-    def vector_search(self, q: np.ndarray, k: int) -> list[NodeRef]
-    def expand(self, seeds: list[NodeRef], hops: int, cap: int) -> list[NodeRef]
-    def reinforce(self, node_ids: list[str], edge_ids: list[str]) -> None
-    def upsert_node(self, kind: str, props: dict) -> str
-    def upsert_edge(self, kind: str, src: str, dst: str, props: dict) -> str
+    async def ensure_schema(self) -> None           # runs the migrations if absent
+    async def seed_from_json(self, payload: dict) -> SeedResult
+    def snapshot(self) -> tuple[list[GraphNode], list[GraphEdge]]   # from the mirror
+    async def vector_search(self, q: np.ndarray, k: int) -> list[NodeRef]
+    async def expand(self, seeds: list[NodeRef], hops: int, cap: int) -> list[NodeRef]
+    async def reinforce(self, node_ids: list[str], edge_ids: list[str], turn_id: str) -> None
+    async def upsert_node(self, kind: str, props: dict, turn_id: str | None) -> str
+    async def upsert_edge(self, kind: str, src: str, dst: str, props: dict,
+                          turn_id: str | None) -> str
     def people(self) -> list[Person]
     def node_count(self) -> int
+    async def purge(self) -> None
 ```
 
-`vector_search` reads all `(id, kind, embedding)` into a cached numpy matrix on first call, invalidated on any write. At 150–300 nodes this is a sub-millisecond dot product; a vector index would be pure overhead.
+Every write also appends a `memory_events` row (§18.2). That table is the profile's history: what was learned, from which turn, with what confidence.
 
-`expand` is breadth-first Cypher:
+`vector_search` is pgvector:
 
-```cypher
-MATCH (s)-[r*1..2]-(n)
-WHERE s.id IN $seed_ids
-RETURN DISTINCT n, r
+```sql
+SELECT id, kind, 1 - (embedding <=> $1) AS similarity
+FROM nodes
+WHERE profile_id = $2
+ORDER BY embedding <=> $1
+LIMIT $3;
+```
+
+`expand` is a recursive CTE, undirected, depth-limited:
+
+```sql
+WITH RECURSIVE walk(node_id, depth) AS (
+    SELECT unnest($1::text[]), 0
+  UNION
+    SELECT CASE WHEN e.src = w.node_id THEN e.dst ELSE e.src END, w.depth + 1
+    FROM walk w
+    JOIN edges e ON e.src = w.node_id OR e.dst = w.node_id
+    WHERE w.depth < $2
+)
+SELECT n.id, n.kind, n.weight
+FROM nodes n
+JOIN (SELECT DISTINCT node_id FROM walk) w ON n.id = w.node_id
 ORDER BY n.weight DESC
-LIMIT $cap
+LIMIT $3;
 ```
+
+### 10.3 Keeping the database off the stall path
+
+The memory store is on the critical path of every turn; the venue network is not trustworthy. Three rules:
+
+1. **Mirror.** At startup `GraphService` loads every node (including embeddings) and edge for the profile into memory. `snapshot()`, `people()` and `node_count()` always read the mirror.
+2. **Timed reads with fallback.** `vector_search` and `expand` run in SQL with `query_timeout_s`. On timeout or error, the same operation runs against the mirror in numpy, the call is logged, and `sys.status.memory_store` becomes `"mirror"` until a query succeeds again.
+3. **Outbox writes.** Every write is applied to the mirror first, then sent to Postgres with `write_timeout_s`. A failed write goes to an in-process outbox, retried every `outbox_retry_s`, in order. The turn never waits for the retry.
+
+If the database is unreachable at boot, the mirror is built from the fixture (§14) and `memory_store` is `"fixture"`.
+
+Two asyncpg pools share the one database: `memory` (small, critical) and `telemetry` (best-effort, §18.3). A saturated telemetry pool can never starve memory reads.
 
 ---
 
@@ -1033,12 +1141,12 @@ LIMIT $cap
 
 Four stages, under 150 ms total.
 
-1. **Seed.** Embed the query (partner utterance for round one; utterance + chosen intent for round two). Cosine against all node embeddings. Top `vector_top_k` (25).
+1. **Seed.** Embed the query (partner utterance for round one; utterance + chosen intent for round two). pgvector nearest neighbours (§10.2). Top `vector_top_k` (25).
 2. **Expand.** Two-hop traversal from seeds, union with seeds, truncate to `candidate_cap` (60) preferring higher weight.
 3. **Partner boost.** If a partner is identified, unconditionally add that `Person` node and everything within one hop. **This is what makes the same intent produce a different sentence depending on who is listening**, and it is the most persuasive behaviour in the demo.
-4. **Submodular selection.** `apricot.FacilityLocationSelection(n_samples=select_k, metric='cosine')` over the candidate embeddings.
+4. **Submodular selection.** Greedy facility-location maximisation over the candidate embeddings, `select_k` (8), implemented in numpy (SW-5).
 
-Plain top-K returns eight near-duplicates. Facility location maximises coverage, so you get the dog's name *and* its dietary needs *and* the walking routine, rather than five memories of the same walk. This is a real quality difference in generated sentences, not a line for the pitch.
+Plain top-K returns eight near-duplicates. Facility location maximises coverage, so you get the dog's name *and* its dietary needs *and* the walking routine, rather than five memories of the same walk.
 
 ```python
 class RetrievalResult(BaseModel):
@@ -1048,7 +1156,7 @@ class RetrievalResult(BaseModel):
     activated_node_ids: list[str]     # everything traversed
 ```
 
-`activated_node_ids` is deliberately larger than `nodes`: the dashboard pulses everything traversed, then brightens the eight selected. Judges watch the search happen, then watch it narrow.
+`activated_node_ids` is deliberately larger than `nodes`: the dashboard pulses everything traversed, then brightens the eight selected.
 
 Context is rendered one fact per line:
 
@@ -1058,6 +1166,8 @@ Context is rendered one fact per line:
 - You dislike the recliner; it hurts your back.
 - Rosie is your dog, a nine-year-old beagle.
 ```
+
+Measure the four stages against Tiger Cloud from the venue at checkpoint 1. If stages 1–2 exceed 100 ms combined, serve them from the mirror (§10.3) and keep SQL for writes and analytics.
 
 ---
 
@@ -1070,11 +1180,11 @@ All calls go through `LLMProvider.complete(system, user, json_mode=...)` with a 
 ```
 You write short intent labels for a speech device used by someone who cannot speak.
 
-They will choose ONE label by looking at it. The label is not the sentence they
-will say — it is the DIRECTION their reply will take.
+They will choose ONE label. The label is not the sentence they will say — it is
+the DIRECTION their reply will take.
 
 Rules:
-- Exactly 4 labels.
+- Exactly {n_intents} labels.
 - Each label is 1 to 3 words. Never more.
 - Labels must be clearly distinct in meaning from one another.
 - Cover a genuine range: at minimum one affirmative, one negative or deflecting,
@@ -1083,7 +1193,7 @@ Rules:
 - Never include punctuation. Never number them.
 
 Return strict JSON, nothing else:
-{"labels": ["...", "...", "...", "..."]}
+{"labels": ["...", "...", "..."]}
 
 CONTEXT ABOUT THE PERSON:
 {context}
@@ -1092,7 +1202,7 @@ WHO IS SPEAKING TO THEM: {partner_name} ({partner_relationship})
 WHAT THEY JUST SAID: "{utterance}"
 ```
 
-Rendered on tiles 0–3. Tile 4 is always "Cancel", never LLM-generated.
+Rendered on tiles 0–2. The last tile is always "Cancel", never LLM-generated. With three labels, the "at minimum" range rule uses all three.
 
 ### 12.2 Candidate sentences
 
@@ -1124,7 +1234,7 @@ THEY SAID: "{utterance}"
 CHOSEN INTENT: "{intent}"
 ```
 
-`grounding` drives the node-highlight animation. Ids not present in the supplied facts are dropped silently rather than failing the turn.
+The three candidates go on tiles 0–2 with Cancel on tile 3. `grounding` drives the node-highlight animation. Ids not present in the supplied facts are dropped silently rather than failing the turn.
 
 ### 12.3 Partner identification
 
@@ -1145,7 +1255,7 @@ Runs after each spoken turn with the utterance, the spoken sentence and a graph 
 
 Below `confidence_threshold` discarded; at most `max_new_nodes_per_turn` commit. Each proposal is checked against existing nodes by cosine similarity — above `dedup_similarity` (0.88) it reinforces the existing node instead of creating a duplicate. **Without this check the graph fills with near-identical nodes within five turns.**
 
-New nodes broadcast as `graph.bloom` and animate into place.
+Every committed change — create, reinforce, dedup merge — is written to `memory_events` with the `turn_id` and confidence. New nodes broadcast as `graph.bloom` and animate into place.
 
 ---
 
@@ -1167,9 +1277,9 @@ New nodes broadcast as `graph.bloom` and animate into place.
         │     ├──────▼───────┤
         │     │  GROUNDING   │  partner id + retrieval → graph.activate
         │     ├──────▼───────┤
-        │     │ INTENT_GEN   │  LLM → 4 labels
+        │     │ INTENT_GEN   │  LLM → 3 labels + Cancel
         │     ├──────▼───────┤
-        │     │ INTENT_WAIT  │  awaiting Selection
+        │     │ INTENT_WAIT  │  sequential slots, awaiting Selection
         │     └──┬────────┬──┘
         │        │        │ Cancel ──────────────► IDLE
         │     ┌──▼───────────┐
@@ -1181,15 +1291,17 @@ New nodes broadcast as `graph.bloom` and animate into place.
         │     ┌──▼───────────┐
         │     │  SPEAKING    │  cache → ElevenLabs → Piper → browser
         │     ├──────▼───────┤
-        │     │  LEARNING    │  reinforce + extract + bloom
+        │     │  LEARNING    │  reinforce + extract + memory_events + bloom
         └─────┴──────────────┘
 ```
 
-**Timeouts.** `INTENT_WAIT` and `CANDIDATE_WAIT` expire after 30 s and return to `IDLE` with a "No selection — listening again" message. Generation states expire at `generation.timeout_s` and fall through their provider chains.
+**Timeouts.** `INTENT_WAIT` and `CANDIDATE_WAIT` end when P2 reports `max_cycles` complete with no selection, or after 40 s, whichever is first, and return to `IDLE` with a "No selection — listening again" message. Generation states expire at `generation.timeout_s` and fall through their provider chains.
 
-**Speller mode** replaces `INTENT_GEN`/`INTENT_WAIT` with a loop over `speller.py`'s N-ary tree (N configurable, default 4), appending one character per traversal, exiting to `SPEAKING` on the SPEAK leaf.
+**Speller mode** replaces `INTENT_GEN`/`INTENT_WAIT` with row/column scanning over `speller.py`'s grid, appending one character per selection, exiting to `SPEAKING` on the SPEAK cell.
 
 **Concurrency rule.** The orchestrator drops any `Selection` arriving outside a `*_WAIT` state, and stamps every `show_targets` with a fresh `trial_id`. A selection whose `trial_id` does not match the current one is discarded. Without this you get stale-suggestion races.
+
+**Recording.** At the end of `LEARNING`, one `conversation_turns` row is emitted (§18.2) with the utterance, labels, chosen intent, candidates, spoken sentence and grounding.
 
 ---
 
@@ -1197,17 +1309,16 @@ New nodes broadcast as `graph.bloom` and animate into place.
 
 Served at `/` when `GET /api/onboarding/status` reports `seeded: false`.
 
-`BioWizard.tsx` shows one large textarea pre-filled with the fixture persona, so a full seed is one click on stage. The operator can edit or replace it entirely.
+`BioWizard.tsx` shows one large textarea pre-filled with the fixture persona, so a full seed is one click on stage. The user, or someone on their behalf, can edit or replace it and share as much or as little as they choose. A "shared by" field records who provided it.
 
 `POST /api/onboarding/seed`:
 
-1. LLM call → JSON graph of nodes and edges. First pass asks for 40–60 nodes across a balanced spread of kinds; a second expansion call enriches each Person and Activity with related Things, Places and Memories. Target 150–300 nodes.
-2. Validate against the pydantic seed schema; drop malformed entries rather than failing
-3. Embed every node's display text
-4. Insert into Kuzu in one transaction
-5. **Stream `graph.bloom` in batches of ~10 nodes at 150 ms intervals**, so the dashboard shows the brain *growing* rather than appearing
-
-That streaming detail is worth the twenty minutes. A graph that materialises instantly looks like a fixture; a graph that grows looks like the system learning, and it is the same data either way.
+1. Upsert the `profiles` row with the bio and `shared_by`
+2. LLM call → JSON graph of nodes and edges. First pass asks for 40–60 nodes across a balanced spread of kinds; a second expansion call enriches each Person and Activity with related Things, Places and Memories. Target 150–300 nodes.
+3. Validate against the pydantic seed schema; drop malformed entries rather than failing
+4. Embed every node's display text
+5. Insert into Tiger in one transaction, with one `memory_events` row per node (`action: 'seed'`)
+6. **Stream `graph.bloom` in batches of ~10 nodes at 150 ms intervals**, so the dashboard shows the memory *growing* rather than appearing
 
 Fixture persona (`data/fixtures/persona_marcus.json`):
 
@@ -1250,26 +1361,26 @@ Utterances under 400 ms or transcribing to fewer than two words are discarded as
 
 ```
 ┌────────────────────────────────────────────────────────────────────┐
-│ StatusBar: ● LIVE  165.0 Hz / 0 drops  LLM ● STT ● TTS ●  [BADGE]  │
+│ StatusBar: ● LIVE  165.0 Hz / 0 drops  BAT 82%  LLM ● STT ● TTS ● DB ● [BADGE] │
 ├──────────────────────────────┬─────────────────────────────────────┤
 │                              │  Transcript                          │
 │   MemoryBrain (3D)           ├─────────────────────────────────────┤
-│   3d-force-graph             │  TargetScores                        │
-│   ~60% of viewport           │  ▓▓▓▓░░ 8.0   ρ=0.21                │
-│                              │  ▓▓▓▓▓▓▓▓ 9.6  ρ=0.58  ◄ dwell 2/3  │
-│   pulse on retrieval         │  ▓▓░░░░ 11.4  ρ=0.14                │
+│   3d-force-graph             │  SlotPanel                           │
+│   ~60% of viewport           │  [ Yes please ][▶Not now ][ Ask… ][✕]│
+│                              │  push ▓▓▓▓▓▓░░ 0.62 ─┊ hold ●●○○     │
+│   pulse on retrieval         │  EMG  ░░░░░░░░ quiet                 │
 │   glow when selected         ├─────────────────────────────────────┤
-│   bloom when learned         │  PsdPlot                             │
+│   bloom when learned         │  HeadsetQuality (14 sensors, O1/O2 ★)│
 ├──────────────────────────────┴─────────────────────────────────────┤
-│  EegTrace — 8 channels, 4 s scrolling                               │
+│  BandPowerPlot — O1/O2 alpha and low-beta, 20 s scrolling, slots shaded │
 ├────────────────────────────────────────────────────────────────────┤
 │  CandidatePanel — 3 sentences, chosen one enlarges and speaks        │
-├──────────────────────┬──────────────────────┬──────────────────────┤
-│ SessionAnalytics     │ PrivacyPanel         │ SpectatorQR          │
-└──────────────────────┴──────────────────────┴──────────────────────┘
+├──────────────────┬──────────────────┬──────────────┬───────────────┤
+│ SessionAnalytics │ MemoryTimeline   │ PrivacyPanel │ SpectatorQR   │
+└──────────────────┴──────────────────┴──────────────┴───────────────┘
 ```
 
-The bottom row collapses to a tabbed strip on narrow viewports. Those three panels are independently removable; nothing else references them.
+The bottom row collapses to a tabbed strip on narrow viewports. Those four panels are independently removable; nothing else references them.
 
 ### 16.2 Component rules
 
@@ -1279,17 +1390,19 @@ The bottom row collapses to a tabbed strip on narrow viewports. Those three pane
 - *glow* — grounding nodes, sustained emissive 3 s then decay
 - *bloom* — `graph.bloom`, node scales 0→full over 500 ms with edges drawing in
 
-**`EegTrace.tsx`** / **`PsdPlot.tsx`** use **uPlot**, mounted via ref, updated with `setData()`. Not Plotly, not Chart.js — at 8 channels × 250 Hz with 4 Hz redraws they drop to single-digit FPS and the panel looks broken, which is worse than not having it.
+**`SlotPanel.tsx`** mirrors the stimulus: the four labels with the active slot highlighted in step with `stim.slot`. In `scan_switch` it shows the trigger power as a bar with the threshold as a vertical line and hold progress as pips. In `seq_flicker` it shows one z-score bar per tile with the threshold line. **This is the panel that proves the idle state is real** — judges watch the bar sit below the line until the pilot acts.
 
-**`TargetScores.tsx`** shows five bars with the threshold as a vertical line and dwell as filled pips. **This is the panel that proves the idle state is real** — judges watch the bars sit below the line while the pilot looks away.
+**`MuscleStrip.tsx`** shows `facial_power` continuously under the trigger bar and turns amber whenever it crosses `contamination_threshold` (DEMO-6). A contaminated selection is marked on the strip and in the transcript.
 
-**`StatusBar.tsx`** renders provider health, stimulus integrity, and `sys.status.input_badge` in high contrast whenever non-null (§7.6).
+**`BandPowerPlot.tsx`** uses **uPlot**, mounted via ref, updated with `setData()`, with slot intervals shaded so a judge can see low-beta rise when the attended tile flickers. **`HeadsetQuality.tsx`** shows per-sensor contact quality on a head outline, O1/O2 emphasised.
+
+**`StatusBar.tsx`** renders provider and database health, battery, stimulus integrity, and `sys.status.input_badge` in high contrast whenever non-null (§7.8).
 
 ### 16.3 WebSocket client
 
 Single connection, exponential-backoff reconnect (250 ms → 4 s cap), typed discriminated union on `type`. On reconnect, request a fresh `graph.snapshot`.
 
-**High-rate streams bypass React state entirely.** `eeg.trace`, `eeg.psd` and `bci.scores` write into refs consumed by the plot components' animation frames. Putting 4 Hz × 3 streams through `useState` causes visible jank in the 3D graph.
+**High-rate streams bypass React state entirely.** `eeg.bandpower`, `bci.command` and `bci.slot_scores` write into refs consumed by the plot components' animation frames.
 
 ---
 
@@ -1320,160 +1433,231 @@ class EmbeddingProvider(ABC):
 
 `registry.py` builds a `FallbackChain` per slot from env vars. Every provider is lazily constructed on first use and wrapped in a circuit breaker: three consecutive failures marks it unhealthy for 30 s and the chain skips it. Health is reported in `sys.status`.
 
-The last link in every chain is local, offline and never fails. That is what makes SW-13 real: the backend boots and serves a complete turn with no API keys, so frontend and graph work proceed while credentials are being sorted out.
+The last link in every chain is local, offline and never fails. That is what makes SW-13 real: the backend boots and serves a complete turn with no API keys.
 
 ---
+## 18. Tiger Data — one database for memory, conversations and signals
 
-## 18. Telemetry — TimescaleDB
+### 18.1 What lives where
 
-### 18.1 Schema
+| Data | Table | Kind |
+|---|---|---|
+| Who the user is, what was shared, by whom | `profiles` | relational |
+| The memory graph | `nodes`, `edges` | relational + pgvector (§10) |
+| Every conversation turn | `conversation_turns` | hypertable |
+| Everything the memory learned, and when | `memory_events` | hypertable |
+| Emotiv band power, 14 sensors × 5 bands at 8 Hz | `band_power` | hypertable, compressed |
+| Mental-command and facial streams | `commands` | hypertable, compressed |
+| Per-slot scores | `slot_scores` | hypertable |
+| Every selection, with cued answer when known | `selections` | hypertable |
+| Stimulus frame integrity | `stimulus_integrity` | hypertable |
 
-`migrations/001_timescale.sql`:
+This is the "relational profiles and high-frequency metric streams side by side" case: a query can join what the user said, what the system knew at that moment, and how clean the signal was, in one SQL statement.
+
+### 18.2 Schema
+
+`migrations/002_timeseries.sql`:
 
 ```sql
--- Wide format: 250 rows/s, not 2000. Narrow is 8x the row overhead for no
--- analytical benefit, since we always read all channels together.
-CREATE TABLE eeg_frames (
-  ts TIMESTAMPTZ NOT NULL, session_id TEXT NOT NULL,
-  ch0 REAL, ch1 REAL, ch2 REAL, ch3 REAL,
-  ch4 REAL, ch5 REAL, ch6 REAL, ch7 REAL);
-SELECT create_hypertable('eeg_frames','ts',chunk_time_interval=>INTERVAL '1 minute');
+CREATE TABLE conversation_turns (
+  ts TIMESTAMPTZ NOT NULL, profile_id TEXT NOT NULL, session_id TEXT NOT NULL,
+  turn_id TEXT NOT NULL, partner_id TEXT, utterance TEXT,
+  intents TEXT[], intent TEXT, candidates TEXT[], spoken_text TEXT,
+  grounding TEXT[], llm_provider TEXT, tts_tier TEXT,
+  total_latency_ms INTEGER, turn_usd NUMERIC(10,6));
+SELECT create_hypertable('conversation_turns', 'ts', chunk_time_interval => INTERVAL '1 day');
 
-CREATE TABLE bci_scores (
+CREATE TABLE memory_events (
+  ts TIMESTAMPTZ NOT NULL, profile_id TEXT NOT NULL, turn_id TEXT,
+  node_id TEXT, edge_id TEXT,
+  action TEXT NOT NULL CHECK (action IN
+    ('seed','create','reinforce','dedup_merge','purge')),
+  confidence REAL, weight_after REAL, summary TEXT);
+SELECT create_hypertable('memory_events', 'ts', chunk_time_interval => INTERVAL '1 day');
+
+-- Narrow by sensor: 112 rows/s. Queries read one or two sensors far more
+-- often than all fourteen, and compression segments by sensor.
+CREATE TABLE band_power (
+  ts TIMESTAMPTZ NOT NULL, session_id TEXT NOT NULL, sensor TEXT NOT NULL,
+  theta REAL, alpha REAL, beta_l REAL, beta_h REAL, gamma REAL);
+SELECT create_hypertable('band_power', 'ts', chunk_time_interval => INTERVAL '5 minutes');
+
+CREATE TABLE commands (
   ts TIMESTAMPTZ NOT NULL, session_id TEXT NOT NULL,
-  algorithm TEXT NOT NULL, target_idx SMALLINT NOT NULL,
-  frequency REAL NOT NULL, rho REAL NOT NULL,
-  is_winner BOOLEAN NOT NULL, margin REAL, dwell_count SMALLINT);
-SELECT create_hypertable('bci_scores','ts',chunk_time_interval=>INTERVAL '5 minutes');
+  stream TEXT NOT NULL CHECK (stream IN ('com','fac')),
+  action TEXT NOT NULL, power REAL NOT NULL);
+SELECT create_hypertable('commands', 'ts', chunk_time_interval => INTERVAL '5 minutes');
+
+CREATE TABLE slot_scores (
+  ts TIMESTAMPTZ NOT NULL, session_id TEXT NOT NULL, trial_id TEXT NOT NULL,
+  algorithm TEXT NOT NULL, cycle SMALLINT NOT NULL, target_idx SMALLINT NOT NULL,
+  score REAL);
+SELECT create_hypertable('slot_scores', 'ts', chunk_time_interval => INTERVAL '1 hour');
 
 CREATE TABLE selections (
   ts TIMESTAMPTZ NOT NULL, session_id TEXT NOT NULL, trial_id TEXT NOT NULL,
   round TEXT NOT NULL, target_idx SMALLINT NOT NULL, label TEXT,
-  confidence REAL, source TEXT, cued_idx SMALLINT, latency_s REAL);
-SELECT create_hypertable('selections','ts',chunk_time_interval=>INTERVAL '1 hour');
+  confidence REAL, source TEXT, algorithm TEXT, trigger TEXT,
+  contaminated BOOLEAN NOT NULL DEFAULT false,
+  cued_idx SMALLINT, latency_s REAL);
+SELECT create_hypertable('selections', 'ts', chunk_time_interval => INTERVAL '1 hour');
 
 CREATE TABLE stimulus_integrity (
-  ts TIMESTAMPTZ NOT NULL, session_id TEXT NOT NULL, profile TEXT NOT NULL,
+  ts TIMESTAMPTZ NOT NULL, session_id TEXT NOT NULL,
   measured_refresh_hz REAL NOT NULL, dropped_frames SMALLINT NOT NULL,
   interval_std_ms REAL);
-SELECT create_hypertable('stimulus_integrity','ts',chunk_time_interval=>INTERVAL '1 hour');
+SELECT create_hypertable('stimulus_integrity', 'ts', chunk_time_interval => INTERVAL '1 hour');
 
-CREATE TABLE turns (
-  ts TIMESTAMPTZ NOT NULL, session_id TEXT NOT NULL, turn_id TEXT NOT NULL,
-  partner_id TEXT, utterance TEXT, intent TEXT, spoken_text TEXT,
-  llm_provider TEXT, tts_tier TEXT, total_latency_ms INTEGER,
-  turn_usd NUMERIC(10,6));
-SELECT create_hypertable('turns','ts',chunk_time_interval=>INTERVAL '1 hour');
-
-CREATE MATERIALIZED VIEW rho_1s WITH (timescaledb.continuous) AS
-SELECT time_bucket('1 second', ts) AS bucket, session_id, target_idx,
-       avg(rho) AS mean_rho, max(rho) AS max_rho
-FROM bci_scores GROUP BY bucket, session_id, target_idx;
+-- Continuous aggregates: the dashboard reads these, never the raw tables.
+CREATE MATERIALIZED VIEW occipital_1s WITH (timescaledb.continuous) AS
+SELECT time_bucket('1 second', ts) AS bucket, session_id, sensor,
+       avg(alpha) AS alpha, avg(beta_l) AS beta_l
+FROM band_power WHERE sensor IN ('O1','O2')
+GROUP BY bucket, session_id, sensor;
 
 CREATE MATERIALIZED VIEW accuracy_1m WITH (timescaledb.continuous) AS
-SELECT time_bucket('1 minute', ts) AS bucket, session_id,
+SELECT time_bucket('1 minute', ts) AS bucket, session_id, algorithm,
        count(*) AS n,
        count(*) FILTER (WHERE cued_idx = target_idx) AS n_correct,
+       count(*) FILTER (WHERE contaminated) AS n_contaminated,
        avg(latency_s) AS mean_latency_s
-FROM selections WHERE cued_idx IS NOT NULL GROUP BY bucket, session_id;
+FROM selections WHERE cued_idx IS NOT NULL
+GROUP BY bucket, session_id, algorithm;
 
-SELECT add_continuous_aggregate_policy('rho_1s',
-  start_offset => INTERVAL '10 minutes',
-  end_offset => INTERVAL '1 second',
+CREATE MATERIALIZED VIEW learning_10m WITH (timescaledb.continuous) AS
+SELECT time_bucket('10 minutes', ts) AS bucket, profile_id, action,
+       count(*) AS n, avg(confidence) AS mean_confidence
+FROM memory_events GROUP BY bucket, profile_id, action;
+
+SELECT add_continuous_aggregate_policy('occipital_1s',
+  start_offset => INTERVAL '10 minutes', end_offset => INTERVAL '1 second',
   schedule_interval => INTERVAL '2 seconds');
+SELECT add_continuous_aggregate_policy('accuracy_1m',
+  start_offset => INTERVAL '1 day', end_offset => INTERVAL '1 minute',
+  schedule_interval => INTERVAL '30 seconds');
+SELECT add_continuous_aggregate_policy('learning_10m',
+  start_offset => INTERVAL '7 days', end_offset => INTERVAL '1 minute',
+  schedule_interval => INTERVAL '1 minute');
 
-ALTER TABLE eeg_frames SET (timescaledb.compress,
-  timescaledb.compress_segmentby = 'session_id');
-SELECT add_compression_policy('eeg_frames', INTERVAL '10 minutes');
+ALTER TABLE band_power SET (timescaledb.compress,
+  timescaledb.compress_segmentby = 'session_id, sensor');
+SELECT add_compression_policy('band_power', INTERVAL '10 minutes');
+ALTER TABLE commands SET (timescaledb.compress,
+  timescaledb.compress_segmentby = 'session_id, stream');
+SELECT add_compression_policy('commands', INTERVAL '10 minutes');
 ```
 
-### 18.2 The rule that matters
+Before the pitch, run `SELECT * FROM hypertable_compression_stats('band_power')` and quote the measured ratio, not the marketing one.
 
-**The database must never be able to stall the pipeline.**
+### 18.3 The rule that matters
+
+**Telemetry must never be able to stall the pipeline.**
 
 `telemetry.py` exposes a synchronous `emit(record)` that does exactly one thing: `queue.put_nowait`. On `QueueFull` it increments a dropped counter and returns. It never awaits, never retries, never raises.
 
-A consumer task drains every `flush_interval_ms`, batches up to `flush_batch` rows per table, and writes via `asyncpg.copy_records_to_table`. If the database is unreachable, the consumer logs once per 30 s and keeps draining into the void so the queue never backs up.
+A consumer task drains every `flush_interval_ms`, batches up to `flush_batch` rows per table, and writes via `asyncpg` `copy_records_to_table` on the **telemetry** pool. If the database is unreachable, the consumer logs once per 30 s and keeps draining into the void so the queue never backs up.
 
-`tests/test_telemetry.py` asserts that with the consumer stalled, 10,000 `emit()` calls complete in under 50 ms and the dropped counter equals the overflow.
+`conversation_turns` and `memory_events` are **not** telemetry: they are written through the memory path (§10.3) with the outbox, because losing them loses the user's history.
 
-Dropped count surfaces in `sys.status`. If non-zero, raise `eeg_downsample` to 2 — losing half the stored EEG resolution is acceptable; losing a classification is not.
+`tests/test_telemetry.py` asserts that with the consumer stalled, 10,000 `emit()` calls complete in under 50 ms and the dropped counter equals the overflow. Dropped count surfaces in `sys.status`; if non-zero, raise `bandpower_downsample` to 2.
 
-### 18.3 Analytics panel
+### 18.4 Analytics panel
 
-`SessionAnalytics.tsx`, fed by `analytics.summary` every 2 s:
+`SessionAnalytics.tsx`, fed by `analytics.summary` every 2 s from the continuous aggregates.
 
-- **Accuracy over time**, from `accuracy_1m`
-- **Mean correlation per target**, from `rho_1s`, five sparklines. Reveals a bad electrode instantly — one target's ρ sits flat while the others move.
-- **Selection latency distribution**
-- **Information Transfer Rate** in bits/min, from accuracy, target count and mean selection time. This is the standard BCI performance metric and it is what lets you compare a semantic interface against a character speller with a real measurement behind it.
-- **Frame integrity strip**, overlaid with selection events
+**Always available:**
 
-This panel is also the honest answer to "how do you know it's working?" It is a measurement, not a claim.
+- **Occipital alpha and low-beta**, from `occipital_1s`, with selections overlaid
+- **Selection latency distribution** and **selections per minute**
+- **Contaminated fraction** of mental-command selections
+- **Frame integrity strip**
+
+**Requires cued trials** (§18.6):
+
+- **Accuracy over time**, per method, from `accuracy_1m`
+- **Information Transfer Rate** in bits/min, from accuracy, target count and mean selection time
+
+`accuracy_pct` and `itr_bits_per_min` are **nullable**. When `cued_trials == 0` the panel renders those tiles greyed with "run a cued block to measure", not an empty chart. This panel is the honest answer to "how do you know it's working?" It must not display a number it cannot compute.
+
+### 18.5 Memory timeline
+
+`MemoryTimeline.tsx`, fed by `GET /api/memory/timeline` and `learning_10m`: a scrolling list of what the system learned, from which conversation, with what confidence — "Learned: *needs an adjustable chair* (0.82), from Sofia, 14:32". It makes the continuously-updating profile visible and auditable, and it is a query no graph-only database answers in one statement:
+
+```sql
+SELECT m.ts, m.action, n.kind, coalesce(n.name, n.text) AS fact,
+       m.confidence, t.partner_id, t.utterance
+FROM memory_events m
+JOIN nodes n ON n.id = m.node_id
+LEFT JOIN conversation_turns t ON t.turn_id = m.turn_id
+WHERE m.profile_id = $1 AND m.ts > $2
+ORDER BY m.ts DESC LIMIT 50;
+```
+
+### 18.6 Cued blocks
+
+A cued block is a short run where the stimulus outlines the tile to choose, so the correct answer is recorded alongside the selection. It is the only source of `selections.cued_idx`, and therefore of accuracy and ITR.
+
+`POST /api/cued_block/start {n_trials: int = 20}`:
+
+1. For each trial, pick a target at random, publish `stim.show_targets` with `cue_idx` set
+2. The stimulus outlines that tile during the cue phase
+3. Record the resulting selection with `cued_idx` populated
+
+`scripts/feasibility.py` (§7.6) is a cued block per method plus the statistics. Run one during pre-judging setup: it populates the panel and gives the presenter a real figure to quote.
 
 ---
 
 ## 19. Spectator relay
 
-A judge three metres away cannot read the dashboard. A QR code on the pilot's table opens a phone-sized live view: which target is winning, the transcript, the sentence just spoken, a memory-node counter.
+A judge three metres away cannot read the dashboard. A QR code on the pilot's table opens a phone-sized live view: which tile is active, the transcript, the sentence just spoken, a memory-node counter.
 
 ```
-Machine A ──outbound WS──► DO droplet ──WS──► judge phones
-          (producer)        relay.py         static/index.html
+PC ──outbound WS──► DO droplet ──WS──► judge phones
+     (producer)      relay.py          static/index.html
 ```
 
-**Outbound only.** Machine A dials the relay; the relay never dials in, never sends commands, and nothing arriving from it enters the pipeline. `spectator.py` is a write-only client. This is a hard constraint: a publicly reachable endpoint that can influence a live BCI is not something to build at 4 a.m.
+**Outbound only.** The PC dials the relay; the relay never dials in, never sends commands, and nothing arriving from it enters the pipeline. `spectator.py` is a write-only client.
 
 $6/mo basic droplet, Docker, Caddy for TLS, domain from GoDaddy Registry.
 
-**What crosses the wire:**
-
 | Sent | Not sent |
 |---|---|
-| Winning target index + label, 1 Hz | Raw EEG, ever |
-| Correlation values, downsampled to 1 Hz | Per-window score streams |
-| Partner utterance transcript | Personal graph node text |
+| Active tile and selected label, 1 Hz | Band power or command streams |
+| Partner utterance transcript | Personal memory node text |
 | Spoken sentences | Node/edge contents, embeddings |
 | Node and edge **counts** by kind | The persona's private details |
-| Profile, refresh, dropped frames | Keys, internal identifiers |
+| Refresh rate, dropped frames | Keys, internal identifiers |
 
-The spoken sentences are already public — they are being said aloud in a room full of people. The graph contents are not, and they do not leave the machine.
-
-**Gradient AI** serves an OpenAI-compatible endpoint, so it slots into `llm_openai_compat.py` with no new code — only three env vars. It sits third in the chain, giving the LLM path a second network vendor if Gemini rate-limits during judging.
+**Gradient AI** serves an OpenAI-compatible endpoint, so it slots into `llm_openai_compat.py` with no new code — only three env vars. It sits third in the LLM chain.
 
 ---
 
 ## 20. Data and privacy
 
-This system builds a structured model of a disabled person's family, home, medical needs and daily routine, then sends fragments to three cloud vendors on every turn. That is the correct trade for capability, and it is exactly the situation where a user deserves to see what is happening and be able to stop it.
+This system builds a structured model of a disabled person's family, home, needs and routine, stores every conversation, and sends fragments to cloud vendors on every turn. That is the correct trade for capability, and it is exactly the situation where a user deserves to see what is happening and be able to stop it.
 
-**Data flow ledger.** Every outbound call emits `privacy.flow`. The panel renders:
+**Consent at onboarding.** The wizard states what is stored (the profile, every conversation, the memory built from them, the headset's band-power and command streams) and where (Tiger Cloud). `shared_by` records who provided the bio.
+
+**Data flow ledger.** Every outbound call emits `privacy.flow`. The panel renders, for example:
 
 ```
-This session, data has left this machine 14 times:
+This session, data has left this machine 31 times:
 
-  → Gemini (Google)     9 calls   intent labels, sentences, fact extraction
-                                  sends: partner utterance + 8 retrieved facts
-  → ElevenLabs          4 calls   speech synthesis
-                                  sends: the sentence text only
-  → Deepgram            1 call    transcription
-                                  sends: 3.2 s of microphone audio
-  → Spectator relay   312 events  public live view
-                                  sends: selections + spoken lines. No graph content.
+  → Gemini (Google)      9 calls   intent labels, sentences, fact extraction
+                                   sends: partner utterance + 8 retrieved facts
+  → ElevenLabs           4 calls   speech synthesis — the sentence text only
+  → Deepgram             1 call    transcription — 3.2 s of microphone audio
+  → Tiger Cloud         17 writes  your memory, conversations, headset streams
+  → Spectator relay    312 events  selections + spoken lines. No memory content.
 
-Never sent anywhere: your memory graph, raw EEG, voice enrollment audio
-Stored only here:    Kuzu graph (247 nodes), EEG telemetry (local Postgres)
+Never sent to an AI vendor: your full memory, headset streams, voice enrollment audio
 ```
 
-The instrumentation is one decorator on each provider method. Roughly 40 lines.
+**Cost visibility.** `cost.py` accumulates tokens, characters and audio seconds per turn, multiplies by `privacy.price_table`, emits `privacy.cost`, and stores `turn_usd` in `conversation_turns`.
 
-**Cost visibility.** `cost.py` accumulates tokens, characters and audio seconds per turn, multiplies by `privacy.price_table`, emits `privacy.cost`. This is honest about something most AI demos hide: a system a disabled person depends on for speech has a running per-sentence cost, and if that is $0.004 per sentence then a day of conversation is a real number a family would want to know.
+**Local Mode.** One toggle. LLM truncates to a local endpoint then static; STT to `faster_whisper`; TTS to cache then Piper (no voice clone — **say this plainly in the UI**); memory served from the mirror with writes held in the outbox; spectator disconnects; telemetry uploads pause. A `LOCAL MODE` badge appears. No restart.
 
-**Local Mode.** One toggle. LLM truncates to a local endpoint then static; STT to `faster_whisper`; TTS to cache then Piper (no voice clone — **say this plainly in the UI, do not hide the downgrade**); spectator disconnects; telemetry goes local. A `LOCAL MODE` badge appears. No restart.
-
-**This is the demo moment.** Mid-pitch, flip the toggle, disconnect the network, complete another full turn — slower, generic voice, working. "This keeps working when the internet doesn't" is worth nothing asserted and a great deal demonstrated.
-
-**Purge.** `POST /api/privacy/purge` with scope `graph` drops and recreates the Kuzu database; `telemetry` deletes the session's rows; `all` does both plus clears the audio cache. Confirmation required. Twenty minutes of work, and the difference between a privacy panel that informs and one that gives control.
+**Purge.** `POST /api/privacy/purge` with scope `memory` deletes the profile's nodes and edges (cascade) and logs a `purge` event; `conversations` deletes `conversation_turns` and `memory_events` for the profile; `signals` deletes the session's `band_power`, `commands`, `slot_scores` and `selections`; `all` does all three plus clears the audio cache. Confirmation required.
 
 ---
 
@@ -1481,49 +1665,47 @@ The instrumentation is one decorator on each provider method. Roughly 40 lines.
 
 ### 21.1 Roles
 
-| | Owner | Scope |
-|---|---|---|
-| **Dev A** | | Orchestrator FSM, FastAPI, WS hub, provider layer, input layer, config, integration. **Also the pilot — so Dev A does not present.** |
-| **Dev B** | | Sensor process end to end, and the stimulus process. Both halves of one closed loop; splitting them across people creates a synchronisation bug nobody owns. |
-| **Dev C** | | Entire frontend. |
-| **Dev D** | | Graph, retrieval, generation, extraction, partner ID, onboarding, prompts, persona, speller. **Presents.** |
+| | Scope |
+|---|---|
+| **Dev A** | Contract changes (§6) and config (§5) per AGENTS.md §4, `inputs/bci.py` rename, orchestrator for four sequential targets, `db.py` pools, integration. |
+| **Dev B** | P1 end to end (Cortex bridge, training, both decision methods, synthetic, recorder) and P2 (sequential stimulus). One person owns both halves of the loop. Runs the feasibility gate. |
+| **Dev C** | Frontend: SlotPanel, MuscleStrip, BandPowerPlot, HeadsetQuality, MemoryTimeline, plus the existing panel set. |
+| **Dev D** | Port `graph.py` from Kuzu to Tiger (§10), migrations, `memory_events` from onboarding and extraction, `conversation_turns`, retrieval latency against Tiger Cloud. |
 
-### 21.2 Schedule
+Pilot: whoever wears the headset trains the mental command and does not present. Presenter: Dev D.
+
+### 21.2 Remaining work, from revision 2
+
+Hours are counted from when this revision lands (H+0).
 
 | Hours | Dev A | Dev B | Dev C | Dev D |
 |---|---|---|---|---|
-| **0–2** | Repo, `uv`, config, **`shared/schemas.py`**, `bus.py`, `run.sh`, GoDaddy domain. **Publish schemas by hour 2 — everyone is blocked until this lands.** | `check_stimulus.py` on both machines; record measured refresh and profile for each. Then gel the cap and confirm the Cyton streams. | Vite + React + TS + Tailwind scaffold, WS client against a mock, layout shells | Kuzu install, DDL, `ensure_schema()`, hand-written 20-node graph |
-| **2–5** | **`inputs/base.py` + `inputs/keyboard.py`.** This unblocks C and D for the rest of the build. | `sources/synthetic.py` — **priority, unblocks everyone** | MemoryBrain with static data, EegTrace + PsdPlot on synthetic | `graph.py` CRUD + vector search, embeddings, retrieval stages 1–2 |
-| **5–12** | FastAPI skeleton, WS hub, provider ABCs + offline fallbacks, orchestrator FSM on stubs | `profile.py`, both render modes, stimulus renderer, integrity, LSL | TargetScores, Transcript, CandidatePanel, StatusBar, wired to real WS | retrieval stages 3–4, `generation.py` + prompts against Gemini |
-| **12–13** | **CROSS-MACHINE REHEARSAL.** Clean clone onto Machine A, `uv sync`, all four processes, confirm the `hi` profile and stable stimulus. Fix every portability break now. | | | |
-| **13–18** | Gemini + ElevenLabs providers, `voice.py` chain + cache, `cost.py` decorator | `dsp.py`, `fbcca.py`, `decision.py`; `test_fbcca` and `test_profiles` passing ≥95% | Onboarding wizard, bloom/pulse/glow | `extraction.py`, `partner.py`, dedup |
-| **18–22** | **CHECKPOINT 1.** All four processes, synthetic source, full turn on Machine A. Sleep rotation: two down, two up. | | | |
-| **22–26** | `telemetry.py` + migration + Tiger Cloud | Cyton live: first real classification | `SessionAnalytics.tsx` | `onboarding.py`, persona fixture, streamed bloom |
-| **26–29** | **CHECKPOINT 2.** Real EEG, real LLM, real voice, real telemetry, full turn end to end. | | | |
-| **29–32** | Deploy `spectator/`, wire it, point the domain | eTRCA + calibration **only if checkpoint 2 was clean** | `SpectatorQR.tsx`, `PrivacyPanel.tsx`, Local Mode | Speller (~2 h), pitch script, Devpost draft |
-| **32–34** | **FEATURE FREEZE.** `prerender_cache.py`. Backup video. Clean replay session. Verify Local Mode with the network physically off. | | | |
-| **34–36** | Devpost writeup with a distinct paragraph per track, README, `CREDITS.md`, rehearse three times with the cap on. | | | |
+| **0–2** | Schemas §6 + `types.ts`, config §5 — one contract commit | `check_cortex.py`: licence-free streams arrive, contact quality green. `check_stimulus.py` at 165 Hz | Scaffold Vite app from the prototype; SlotPanel against `fake_sensor.py` | Tiger Cloud service, `001_memory.sql`, `002_timeseries.sql` applied |
+| **2–6** | `inputs/bci.py`, orchestrator four-target flow, `db.py` | `sources/cortex.py`, `sources/synthetic.py`, `decision/scan_switch.py` | MuscleStrip, BandPowerPlot, HeadsetQuality | `graph.py` on asyncpg + mirror + outbox; existing graph tests passing against local Postgres |
+| **6–8** | **FEASIBILITY GATE (§7.6).** Train `push`, run the cued blocks, record the numbers in `CHANGELOG.md`, pick the method. | | | |
+| **8–14** | Wire telemetry to the new tables | P2 sequential stimulus, `decision/seq_flicker.py`, recorder, replay | MemoryBrain, CandidatePanel, Transcript on the real WS | `memory_events` from onboarding + extraction, `conversation_turns`, timeline endpoint |
+| **14–16** | **CHECKPOINT 1.** Headset, real LLM, real voice, Tiger, full turn end to end. | | | |
+| **16–22** | Gemini/ElevenLabs verification, cost, Local Mode | Speller scan grid; retrain if accuracy drifted | SessionAnalytics, MemoryTimeline, PrivacyPanel | Retrieval latency from venue; compression ratio; pitch script |
+| **22–24** | **FEATURE FREEZE.** `prerender_cache.py`. Backup video. Clean replay session. Cued block for the analytics panel. | | | |
 
 ### 21.3 Critical path
 
-`shared/schemas.py` (h2) → `inputs/keyboard.py` (h5) → `sources/synthetic.py` (h5) → orchestrator on stubs (h12) → checkpoint 1 (h22).
+Contract commit (H+2) → `sources/cortex.py` + `scan_switch.py` (H+6) → feasibility gate (H+8) → checkpoint 1 (H+16).
 
-Everything else can slip. **The keyboard adapter and the synthetic source are what let three people build a complete system while the fourth is still gelling electrodes.**
+`graph.py` on Tiger is the second critical path: until it lands, the rest of the pipeline keeps running on the Kuzu implementation, so it does not block anyone else.
 
 ### 21.4 Cut order
 
-1. eTRCA
-2. Privacy panel and Local Mode (forfeits Assurant)
-3. Speller
-4. Spectator relay (forfeits DigitalOcean; keep the Gradient provider, it is three env vars)
-5. Session Analytics panel (keep the telemetry *sink* — that is the substantive Tiger Data use)
+1. `seq_flicker` (keep `scan_switch`)
+2. Speller
+3. Spectator relay (forfeits DigitalOcean; keep the Gradient provider)
+4. Privacy panel and Local Mode (forfeits Assurant)
+5. MemoryTimeline panel (keep `memory_events` — the table is the Tiger story)
 6. Fact extraction writeback (keep edge reinforcement)
 7. Partner identification (hardcode one partner)
 8. Onboarding wizard (load the fixture)
 
-**Never cut:** the idle state, the PSD plot, the memory brain, the voice clone. Those four are the demo.
-
-Cuts 2, 4 and 5 forfeit a sponsor track and cost the core demo nothing. Cuts 6–8 keep tracks but weaken the demo. **At hour 30, cut tracks, not the demo.**
+**Never cut:** the idle state, the muscle strip, the memory brain, the voice clone, and Tiger as the memory store. Those five are the demo.
 
 ---
 
@@ -1531,26 +1713,24 @@ Cuts 2, 4 and 5 forfeit a sponsor track and cost the core demo nothing. Cuts 6�
 
 | Failure | Detection | Response |
 |---|---|---|
-| Cyton dongle absent | Exception at startup | Fall back to synthetic, badge shown, log loudly |
-| Cyton powered over USB | Massive 60 Hz band on every channel | Batteries only. This is the single most common hardware mistake. |
-| Electrode railed | `railed` in `SensorStatus` | Dashboard marks it red; classifier excludes it from CCA |
-| Frame drops > threshold | `stim.integrity` | Log ERROR; sustained > 10 s shows a dashboard warning |
-| Panel silently at 60 Hz | `profile.py` selects `lo` unexpectedly | Check dock, VRR, power profile. **Do not override the profile** — `lo` is correct for whatever the panel is actually doing. |
-| P1 classifies before configuration | Assertion | P1 refuses until `stim.profile` arrives. If this fires, the ZMQ SUB is misconfigured. |
-| Frequency changed without checking harmonics | Exactly two targets degrade together | Run `test_profiles.py` |
-| Classification never fires | `dwell_count` never reaches 3 | Lower `rho_threshold` to 0.28; check the pilot is fixating tile centres |
-| Alpha false-triggers | Selections fire with eyes closed | Confirm no target at 10.0 Hz on `hi`; raise `margin_ratio` to 1.25 |
-| Telemetry queue saturating | Non-zero drop counter | Raise `eeg_downsample`. **Never raise `queue_maxsize`** — that trades a dropped row for a stalled pipeline. |
-| TimescaleDB unreachable | Consumer logs once per 30 s | Nothing else changes; telemetry is best-effort by design |
+| EMOTIV Launcher / Cortex not running | `check_cortex.py`, P1 startup | Start the Launcher, log in. P1 falls back to synthetic with the badge. |
+| Cortex rejects a stream | `subscribe` error | Confirm only licence-free streams are requested (§8.1); raw `eeg` is never requested. |
+| Poor contact | `dev` below `min_contact_quality` | Rehydrate the sensors, reseat O1/O2. Do not run a cued block until green. |
+| Headset battery low | `battery_pct` | Charge between sessions; a USB-charging headset is still wireless while recording. |
+| Mental command never reaches threshold | `hold_count` never reaches 4 | Retrain (§8.2); lower `power_threshold` to 0.35 |
+| Mental command fires at rest | Selections with no intent | Retrain neutral; raise `power_threshold`; raise `hold_s` to 0.75 |
+| Trigger is really the jaw | High contaminated fraction | Retrain with "face slack"; if it persists, switch to `trigger: facial` openly with its badge |
+| `seq_flicker` never clears margin | Winner z < threshold | Check O1/O2 contact; raise contrast; accept that it is the pure-EEG mode and may be cut |
+| Panel silently at 60 Hz | `stim.profile.measured_refresh_hz` | Check power profile, cable, GPU assignment. 15 Hz stays exact; carry on and log. |
+| Frame drops > threshold | `stim.integrity` | Close other GPU-heavy apps; sustained > 10 s shows a dashboard warning |
+| Tiger Cloud slow or unreachable | Query timeout | Mirror serves reads, outbox holds writes, `memory_store: mirror`. The turn completes. |
+| Telemetry queue saturating | Non-zero drop counter | Raise `bandpower_downsample`. **Never raise `queue_maxsize`.** |
 | LLM timeout | 6 s elapsed | Chain to the next provider, then static. The turn always completes. |
 | STT garbage | Confidence < 0.5 or < 2 words | Discard; stay IDLE. Operator can use `POST /api/utterance`. |
 | ElevenLabs down | HTTP error | Cache → Piper → browser. Never silent. |
-| Network dies entirely | Provider dots red | Cached audio + static LLM keep a scripted demo running |
-| Kuzu write conflict | Exception | Retry once; log and skip the fact rather than failing the turn |
 | Duplicate node explosion | `node_count` growing > 4/turn | Lower `dedup_similarity` from 0.88 to 0.82 |
 | System transcribes itself | Self-talk loop | Mic hard-gate during SPEAKING — verify at checkpoint 1 |
-| Spectator relay down | `sys.status` | Hide the QR. Zero pipeline impact; the client is write-only. |
-| **Total live demo failure** | — | Switch to `replay` adapter. State plainly the room is too noisy and this is a session recorded earlier. If that fails, the backup video. |
+| **Total live demo failure** | — | Switch to `replay`. Say plainly that this is a session recorded earlier. If that fails, the backup video. |
 
 ---
 
@@ -1560,25 +1740,25 @@ Go/no-go gates, in order.
 
 | # | Test | Pass criterion |
 |---|---|---|
-| A1 | `check_stimulus.py` on Machine A, 30 s | Measured refresh within 0.5 Hz of nominal, profile `hi`, zero dropped frames, interval σ < 0.5 ms |
-| A2 | `pytest tests/test_fbcca.py` | ≥95% on 200 synthetic windows at 3 µV; ≤2% false positive with no target |
-| A3 | `pytest tests/test_profiles.py` | Both sets pass the harmonic-collision matrix; both classify ≥95%; alpha false positives on `lo` land only on `cancel_idx` |
+| A1 | `check_stimulus.py` on the PC, 30 s | Measured refresh within 0.5 Hz of 165, `exact: true`, zero dropped frames, interval σ < 0.5 ms |
+| A2 | `check_cortex.py` | `pow`, `com`, `fac`, `dev`, `eq` all arriving at their rates; O1/O2 contact ≥ 3 |
+| A3 | `pytest tests/test_scan_switch.py tests/test_seq_flicker.py` | ≥95% correct attribution on synthetic; ≤2% selections with no intent; contamination flag set when fac overlaps |
 | A4 | `pytest tests/test_telemetry.py` | 10,000 `emit()` with a stalled consumer complete in <50 ms; nothing raises |
-| A5 | **Keyboard end-to-end** | With `input.adapter: keyboard` and no hardware attached, a full turn completes: utterance → intents → selection → candidates → selection → audio → bloom |
-| A6 | **Offline boot** | With an empty `.env`, the backend starts and a full turn completes on fallback providers |
-| A7 | Idle state | Cap on, pilot looking at the wall for 60 s, zero selections |
-| A8 | Live classification | 20 cued trials, ≥85% correct target |
+| A5 | **Keyboard end-to-end** | With `input.adapter: keyboard` and no headset, a full turn completes: utterance → intents → selection → candidates → selection → audio → bloom → `memory_events` row |
+| A6 | **Offline boot** | With an empty `.env`, the backend starts on the fixture mirror and a full turn completes on fallback providers |
+| A7 | Idle state | Headset on, pilot relaxed and looking at the tiles for 60 s, zero selections |
+| A8 | **Feasibility gate** | `scan_switch` ≥ 80% over 20 cued trials, p < 0.05, contaminated < 20%. `seq_flicker` recorded, pass mark 60%. |
 | A9 | Latency | Selection → first audio ≤ 2.5 s uncached, ≤ 300 ms cached |
 | A10 | Partner conditioning | Same utterance and intent, two partners, two audibly different sentences with the right term of address |
-| A11 | Writeback | A novel fact mentioned in conversation appears as a node within one turn and is retrievable in the next |
-| A12 | Recovery | Kill the backend mid-turn; restart; dashboard reconnects, graph intact |
-| A13 | Replay | A recorded session replays through the real classifier and reproduces the same selections, badge visible |
-| A14 | Cross-machine | `scripts/smoke_machine_a.py` passes from a clean clone |
-| A15 | Analytics | After 20 cued trials the panel shows a non-empty accuracy series and five distinct per-target sparklines |
-| A16 | Spectator | A phone on cellular data loads the domain and shows selections within 2 s |
-| A17 | Spectator privacy | Inspect outbound payloads: no raw EEG, no graph node text, no keys |
-| A18 | **Local Mode with the network physically off** | Full turn completes, spoken in the Piper voice, graph updated, no exceptions |
-| A19 | Purge | `purge {scope:"all"}` empties graph and telemetry; dashboard returns to onboarding |
+| A11 | Writeback | A novel fact mentioned in conversation appears as a node within one turn, is retrievable in the next, and shows in the memory timeline |
+| A12 | Database outage | Block Tiger Cloud mid-session: the next turn completes from the mirror; unblock, and the outbox drains with no lost `memory_events` |
+| A13 | Recovery | Kill the backend mid-turn; restart; dashboard reconnects, memory intact |
+| A14 | Replay | A recorded session replays through the real decision logic and reproduces the same selections, badge visible |
+| A15 | Analytics | After 20 cued trials the panel shows a non-empty accuracy series and the contaminated fraction |
+| A16 | Compression | `hypertable_compression_stats('band_power')` reports a measured ratio after 10 minutes of recording |
+| A17 | Spectator | A phone on cellular data loads the domain and shows selections within 2 s; payloads contain no signal streams, memory text or keys |
+| A18 | Local Mode, network physically off | Full turn completes in the Piper voice, memory updated in the mirror, outbox drains when the network returns |
+| A19 | Purge | `purge {scope:"all"}` empties memory, conversations and signals; dashboard returns to onboarding |
 
 ---
 
@@ -1586,15 +1766,16 @@ Go/no-go gates, in order.
 
 | # | Item | Default |
 |---|---|---|
-| 1 | Montage | O1, Oz, O2, POz, PO3, PO4, Pz, CPz; SRB/BIAS on earlobes |
-| 2 | Speller scope | Contrast feature, ~2 h, cut first after eTRCA |
-| 3 | Machine A ↔ B link | Direct ethernet or dedicated hotspot. **Never venue wifi.** |
-| 4 | Deepgram key | Free tier. If unavailable, `faster-whisper small` on CPU adds ~1.5 s per utterance, acceptable |
-| 5 | Presenter | Dev D, since Dev A is the pilot |
-| 6 | Persona | Marcus Alvarez, editable at runtime |
-| 7 | Voice enrollment | Dev A, 60 s, recorded before the event |
-| 8 | Tiger Cloud free tier | Assumed sufficient; otherwise local TimescaleDB in Docker, nothing else changes |
-| 9 | Emotiv secondary path | Gated on a feasibility test; not on the critical path |
+| 1 | Headset | Emotiv EPOC X, free Cortex licence, EMOTIV Launcher installed and logged in on the PC |
+| 2 | Cortex app credentials | A Cortex app registered on the Emotiv developer site; id and secret in `.env` |
+| 3 | Display | The PC's built-in 165 Hz panel for the stimulus; dashboard on an external display if one exists |
+| 4 | Pilot training | ~10 minutes of neutral + push training before the feasibility gate, repeated if accuracy drifts |
+| 5 | Tiger Cloud free tier | Sufficient for the memory store and a weekend of compressed band power |
+| 6 | Deepgram key | Free tier. If unavailable, `faster-whisper small` on CPU adds ~1.5 s per utterance |
+| 7 | Presenter | Dev D; the pilot does not present |
+| 8 | Persona | Marcus Alvarez, editable at runtime |
+| 9 | Voice enrollment | The pilot, 60 s, recorded before the event, with consent |
+| 10 | OpenBCI | Not available unless stated; §8.7 is contingency only |
 
 ---
 
@@ -1602,27 +1783,34 @@ Go/no-go gates, in order.
 
 To be reproduced in `CREDITS.md` and referenced in the Devpost submission.
 
-- **Lucid Voice** (UC Berkeley AI Hackathon 2026) — prior art. Its public README was read for architectural patterns: provider abstraction, lazy graceful-degradation service construction, cache-first speech, three-candidate selection. No source code was copied. Input modality, signal processing, stimulus renderer and platform all differ.
-- **FBCCA** — Chen et al., *Filter bank canonical correlation analysis for implementing a high-speed SSVEP-based BCI*, J. Neural Eng. 2015.
-- **TRCA / eTRCA** — Nakanishi et al., *Enhancing detection of SSVEPs for a high-speed BCI using task-related component analysis*, IEEE TBME 2018.
-- **Facility location submodular selection** — Schreiber et al., `apricot`, JMLR 2020.
-- Libraries: BrainFlow, PsychoPy, pylsl, SciPy, NumPy, scikit-learn, KuzuDB, sentence-transformers, apricot-select, FastAPI, uvicorn, pydantic, PyZMQ, asyncpg, React, Vite, Tailwind, 3d-force-graph, three.js, uPlot, webrtcvad, sounddevice, Piper, faster-whisper, qrcode.
-- Services: Google Gemini, ElevenLabs, Deepgram, Tiger Data, DigitalOcean, GoDaddy Registry.
+- **Lucid Voice** (UC Berkeley AI Hackathon 2026) — prior art. Its public README was read for architectural patterns: provider abstraction, lazy graceful-degradation service construction, cache-first speech, three-candidate selection. No source code was copied.
+- **Switch scanning with an attempted-movement click** — Candrea et al., *A click-based electrocorticographic brain-computer interface enables long-term high-performance switch scan spelling*, Communications Medicine 2024.
+- **Motor imagery on the EPOC X** — *Motor imagery-based brain-computer interfaces: an exploration of multiclass motor imagery-based control for Emotiv EPOC X*, Frontiers in Neuroinformatics 2025 — the evidence behind §7.7.
+- **SSVEP** — the visual-cortex frequency-following response that `seq_flicker` measures.
+- **Facility location submodular selection** — Schreiber et al., `apricot`, JMLR 2020 (algorithm; implemented directly in numpy here).
+- Libraries: Emotiv Cortex API, PsychoPy, NumPy, SciPy, asyncpg, pgvector, TimescaleDB, sentence-transformers, FastAPI, uvicorn, pydantic, PyZMQ, React, Vite, Tailwind, 3d-force-graph, three.js, uPlot, webrtcvad, sounddevice, Piper, faster-whisper, qrcode.
+- Services: Emotiv, Google Gemini, ElevenLabs, Deepgram, Tiger Data, DigitalOcean, GoDaddy Registry.
 
 ---
 
 ## 26. Submission notes
 
-The Devpost writeup needs **one distinct paragraph per track**, naming the specific component. A judge skimming for their own technology should find it in five seconds. Generic "we used X" lines read as track-farming and are worse than not entering.
+The Devpost writeup needs **one distinct paragraph per track**, naming the specific component. A judge skimming for their own technology should find it in five seconds.
 
 | Track | The paragraph is about | Point at |
 |---|---|---|
-| **Microsoft** | Communication for people with motor neuron disease runs at ~8 wpm against speech's 150. We replaced character spelling with semantic intent selection. **The product has no chat window** — the interface is a flicker grid and a 3D memory graph; AI is one stage of a pipeline, not the experience. | §1, §13 |
+| **Microsoft** | Communication for people with motor neuron disease runs at ~8 wpm against speech's 150. We replaced character spelling with semantic intent selection by brain switch. **The product has no chat window** — the interface is a scanning tile row and a 3D memory graph. | §1, §13 |
+| **Tiger Data** | One PostgreSQL holds everything: the user's profile and memory graph (relational + pgvector similarity search + recursive-CTE graph walks), every conversation, a `memory_events` hypertable recording what the system learned and when, and 8 Hz × 14-sensor band power beside every selection. Continuous aggregates drive live accuracy, signal and learning panels; compression keeps the headset streams on the free tier (quote the measured ratio). The memory path has a mirror and outbox so a database hiccup never silences the user; telemetry is a drop-on-overflow queue. | §10, §18 |
 | **ElevenLabs** | The user's own voice, cloned from a 60 s clip, restored as the output of a brain-driven pipeline. Cache-first playback so the demo is network-independent. | §15.2 |
-| **Gemini** | Four distinct call sites — intent labels, grounded sentences, partner identification, post-turn fact extraction that grows the graph — under strict-JSON contracts with repair retry and a graceful fallback chain. | §12 |
-| **Tiger Data** | 250 Hz EEG, 20 scores/s and frame-integrity metrics into hypertables. Continuous aggregates drive a live analytics panel showing accuracy, per-target correlation drift and measured Information Transfer Rate. The write path is a bounded drop-on-overflow queue so the database can never stall a real-time neural pipeline. | §18 |
-| **DigitalOcean** | Droplet-hosted spectator relay; judges watch on their phones via a deliberately write-only sanitised stream. Gradient AI is the third link in the LLM chain. | §19 |
+| **Gemini** | Four call sites — intent labels, grounded sentences, partner identification, post-turn fact extraction that grows the memory — under strict-JSON contracts with repair retry and a fallback chain. | §12 |
+| **DigitalOcean** | Droplet-hosted spectator relay; judges watch on their phones via a write-only sanitised stream. Gradient AI is the third LLM link. | §19 |
 | **GoDaddy** | Domain fronting the spectator view. | §19 |
-| **Assurant** | A system holding a disabled person's life should show what leaves the machine. Live data-flow ledger, per-turn cost in USD, one-click purge, and a Local Mode demonstrated on stage by disabling the network mid-pitch. | §20 |
+| **Assurant** | A system holding a disabled person's life should show what leaves the machine. Live data-flow ledger, per-turn cost, scoped purge, and a Local Mode demonstrated on stage. | §20 |
 
-**Do not claim a track whose component was cut.** Update the Devpost selections at hour 34 against what actually runs, not against this document.
+**Do not claim a track whose component was cut**, and quote only accuracy numbers measured by the feasibility gate and cued blocks.
+
+---
+
+## 27. Change history
+
+Every change to this document is recorded in `CHANGELOG.md` with its date, the sections touched, why, and the code follow-ups it creates. Update it in the same commit as the change.
