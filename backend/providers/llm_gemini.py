@@ -9,12 +9,18 @@ detect it and move to the next link; see base.LLMProvider's docstring.
 
 from __future__ import annotations
 
+import asyncio
+import time
+import uuid
+
 import httpx
 
 from backend.app.services.cost import outbound
 from backend.providers.base import LLMProvider
+from shared.logging import get_logger
 
 _API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
+logger = get_logger(__name__)
 
 
 class GeminiLLMProvider(LLMProvider):
@@ -53,11 +59,38 @@ class GeminiLLMProvider(LLMProvider):
             "generationConfig": generation_config,
         }
 
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.post(url, headers={"x-goog-api-key": self._api_key}, json=body)
-        response.raise_for_status()
+        request_id = uuid.uuid4().hex
+        started = time.monotonic()
+        request_log = logger.bind(request_id=request_id, model=self._model)
+        request_log.info("gemini.request_started", max_tokens=max_tokens, timeout_s=timeout)
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await client.post(
+                    url, headers={"x-goog-api-key": self._api_key}, json=body
+                )
+            response.raise_for_status()
+        except asyncio.CancelledError:
+            request_log.warning("gemini.request_cancelled", elapsed_s=time.monotonic() - started)
+            raise
+        except httpx.HTTPError as exc:
+            failed_response = getattr(exc, "response", None)
+            request_log.warning(
+                "gemini.request_failed",
+                elapsed_s=time.monotonic() - started,
+                error_type=type(exc).__name__,
+                http_status=failed_response.status_code if failed_response is not None else None,
+            )
+            raise
         payload = response.json()
         candidates = payload.get("candidates") or []
+        usage = payload.get("usageMetadata") or {}
+        request_log.info(
+            "gemini.request_completed",
+            elapsed_s=time.monotonic() - started,
+            finish_reason=candidates[0].get("finishReason") if candidates else None,
+            output_tokens=usage.get("candidatesTokenCount"),
+            thinking_tokens=usage.get("thoughtsTokenCount"),
+        )
         if not candidates:
             raise RuntimeError("gemini returned no candidates")
         if candidates[0].get("finishReason") == "MAX_TOKENS":
