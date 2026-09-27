@@ -1,0 +1,1042 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <title>Flick — judge dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&amp;family=Martian+Mono:wght@300;400;500;600&amp;display=swap">
+  <style>
+    html, body { margin: 0; background: oklch(0.155 0.008 160); color: oklch(0.94 0.01 160); font-family: 'Hanken Grotesk', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    *, *::before, *::after { box-sizing: border-box; }
+    a { color: oklch(0.87 0.17 158); text-decoration: none; }
+    a:hover { color: oklch(0.95 0.08 158); text-decoration: underline; }
+    ::selection { background: oklch(0.87 0.17 158 / 0.3); }
+    button, input, textarea { font: inherit; color: inherit; }
+    button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid oklch(0.87 0.17 158); outline-offset: 2px; }
+  </style>
+</helmet>
+
+<div style="min-height: 100vh; display: flex; flex-direction: column;">
+
+  <header style="position: sticky; top: 0; z-index: 40; display: flex; align-items: center; gap: 20px; flex-wrap: wrap; min-height: 54px; padding: 8px 16px; background: oklch(0.135 0.008 160); border-bottom: 1px solid oklch(0.27 0.01 160); font-family: 'Martian Mono', monospace; font-size: 11px; color: oklch(0.76 0.012 160);">
+    <div style="display: flex; align-items: baseline; gap: 10px;">
+      <span style="font-family: 'Hanken Grotesk', sans-serif; font-weight: 700; font-size: 21px; letter-spacing: -0.035em; color: oklch(0.94 0.01 160);">flick</span>
+      <span data-clock="1" style="color: oklch(0.62 0.012 160); font-variant-numeric: tabular-nums;">00:00</span>
+    </div>
+    <sc-if value="{{ connLive }}" hint-placeholder-val="{{ false }}">
+      <div style="display: flex; align-items: center; gap: 7px; padding: 4px 10px; border-radius: 999px; background: oklch(0.87 0.17 158 / 0.13); color: oklch(0.87 0.17 158); font-weight: 600; letter-spacing: 0.06em;"><span data-live-dot="1" style="width: 7px; height: 7px; border-radius: 50%; background: oklch(0.87 0.17 158);"></span>LIVE</div>
+    </sc-if>
+    <sc-if value="{{ connMock }}" hint-placeholder-val="{{ true }}">
+      <div style="display: flex; align-items: center; gap: 7px; padding: 4px 10px; border-radius: 999px; background: oklch(0.9 0.18 100 / 0.14); color: oklch(0.9 0.16 100); font-weight: 600; letter-spacing: 0.06em;"><span data-live-dot="1" style="width: 7px; height: 7px; border-radius: 50%; background: oklch(0.9 0.16 100);"></span>MOCK</div>
+    </sc-if>
+    <sc-if value="{{ connRetry }}" hint-placeholder-val="{{ false }}">
+      <div style="display: flex; align-items: center; gap: 7px; padding: 4px 10px; border-radius: 999px; background: oklch(0.7 0.19 25 / 0.16); color: oklch(0.78 0.16 30); font-weight: 600; letter-spacing: 0.06em;"><span style="width: 7px; height: 7px; border-radius: 50%; background: oklch(0.78 0.16 30);"></span>{{ connRetryLabel }}</div>
+    </sc-if>
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <span style="color: oklch(0.62 0.012 160);">STIM</span>
+      <span style="color: oklch(0.94 0.01 160);">{{ stim.profile }}</span>
+      <span style="color: oklch(0.94 0.01 160);">{{ stim.hz }}</span>
+      <span style="color: oklch(0.45 0.01 160);">/</span>
+      <span style="color: {{ stim.dropColor }};">{{ stim.drops }}</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <span style="color: oklch(0.62 0.012 160);">EEG</span>
+      <span style="color: oklch(0.94 0.01 160);">{{ sensorLabel }}</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 14px;">
+      <sc-for list="{{ providers }}" as="p" hint-placeholder-count="3">
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <span style="color: oklch(0.62 0.012 160);">{{ p.slot }}</span>
+          <span style="width: 7px; height: 7px; border-radius: 50%; background: {{ p.color }};"></span>
+          <span style="color: oklch(0.94 0.01 160);">{{ p.name }}</span>
+        </div>
+      </sc-for>
+    </div>
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <span style="color: oklch(0.62 0.012 160);">TEL</span>
+      <span>{{ telemetryLabel }}</span>
+    </div>
+    <div style="flex: 1;"></div>
+    <sc-if value="{{ localMode }}" hint-placeholder-val="{{ false }}">
+      <div style="padding: 7px 12px; border-radius: 6px; background: oklch(0.87 0.17 158); color: oklch(0.17 0.03 158); font-weight: 700; letter-spacing: 0.08em;">LOCAL MODE</div>
+    </sc-if>
+    <sc-if value="{{ hasBadge }}" hint-placeholder-val="{{ true }}">
+      <div role="status" style="padding: 8px 14px; border-radius: 6px; background: oklch(0.9 0.18 100); color: oklch(0.14 0.02 100); font-weight: 700; font-size: 12.5px; letter-spacing: 0.06em; box-shadow: 0 0 0 2px oklch(0.14 0.02 100), 0 0 0 3.5px oklch(0.9 0.18 100);">{{ inputBadge }}</div>
+    </sc-if>
+  </header>
+
+  <main style="flex: 1; display: flex; flex-direction: column; gap: 10px; padding: 10px;">
+
+    <section style="display: grid; grid-template-columns: {{ topCols }}; gap: 10px; min-height: {{ topHeight }};">
+
+      <div style="position: relative; height: {{ brainHeight }}; min-height: 320px; border-radius: 10px; overflow: hidden; border: 1px solid oklch(0.27 0.01 160); background: oklch(0.14 0.008 160);">
+        <div ref="{{ brainRef }}" style="position: absolute; inset: 0;"></div>
+        <div style="position: absolute; top: 14px; left: 16px; display: flex; flex-direction: column; gap: 6px; pointer-events: none;">
+          <span style="font-family: 'Martian Mono', monospace; font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: oklch(0.62 0.012 160);">Memory graph · Kuzu, on this machine</span>
+          <div style="display: flex; align-items: baseline; gap: 8px;">
+            <span style="font-size: 30px; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums;">{{ counts.nodes }}</span>
+            <span style="font-size: 13px; color: oklch(0.62 0.012 160);">nodes</span>
+            <span style="font-size: 30px; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; margin-left: 10px;">{{ counts.edges }}</span>
+            <span style="font-size: 13px; color: oklch(0.62 0.012 160);">edges</span>
+          </div>
+        </div>
+        <div style="position: absolute; top: 14px; right: 16px; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; pointer-events: none; max-width: 48%;">
+          <sc-for list="{{ events }}" as="e" hint-placeholder-count="0">
+            <div style="display: flex; align-items: center; gap: 8px; padding: 5px 10px; border-radius: 6px; background: oklch(0.16 0.008 160 / 0.82); border: 1px solid oklch(0.27 0.01 160); font-family: 'Martian Mono', monospace; font-size: 10.5px; opacity: {{ e.opacity }};">
+              <span style="color: {{ e.color }}; font-weight: 600; letter-spacing: 0.06em;">{{ e.kind }}</span>
+              <span style="color: oklch(0.76 0.012 160);">{{ e.text }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <sc-if value="{{ brainHint }}" hint-placeholder-val="{{ false }}">
+          <div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; color: oklch(0.62 0.012 160); font-family: 'Martian Mono', monospace; font-size: 12px; letter-spacing: 0.04em;">{{ brainHintText }}</div>
+        </sc-if>
+        <div style="position: absolute; left: 16px; bottom: 14px; display: grid; grid-template-columns: repeat(3, auto); gap: 6px 16px; pointer-events: none; font-family: 'Martian Mono', monospace; font-size: 10.5px; color: oklch(0.76 0.012 160);">
+          <div style="display: flex; align-items: center; gap: 6px;"><span style="width: 8px; height: 8px; border-radius: 50%; background: oklch(0.80 0.13 25);"></span>Person<span style="color: oklch(0.62 0.012 160);">{{ counts.Person }}</span></div>
+          <div style="display: flex; align-items: center; gap: 6px;"><span style="width: 8px; height: 8px; border-radius: 50%; background: oklch(0.78 0.11 250);"></span>Place<span style="color: oklch(0.62 0.012 160);">{{ counts.Place }}</span></div>
+          <div style="display: flex; align-items: center; gap: 6px;"><span style="width: 8px; height: 8px; border-radius: 50%; background: oklch(0.85 0.12 95);"></span>Thing<span style="color: oklch(0.62 0.012 160);">{{ counts.Thing }}</span></div>
+          <div style="display: flex; align-items: center; gap: 6px;"><span style="width: 8px; height: 8px; border-radius: 50%; background: oklch(0.76 0.13 305);"></span>Activity<span style="color: oklch(0.62 0.012 160);">{{ counts.Activity }}</span></div>
+          <div style="display: flex; align-items: center; gap: 6px;"><span style="width: 8px; height: 8px; border-radius: 50%; background: oklch(0.80 0.14 60);"></span>Need<span style="color: oklch(0.62 0.012 160);">{{ counts.Need }}</span></div>
+          <div style="display: flex; align-items: center; gap: 6px;"><span style="width: 8px; height: 8px; border-radius: 50%; background: oklch(0.80 0.10 200);"></span>Memory<span style="color: oklch(0.62 0.012 160);">{{ counts.Memory }}</span></div>
+        </div>
+        <sc-if value="{{ showSim }}" hint-placeholder-val="{{ false }}">
+          <div style="position: absolute; right: 14px; bottom: 14px; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; justify-content: flex-end; max-width: 60%; padding: 6px; border-radius: 8px; background: oklch(0.16 0.008 160 / 0.9); border: 1px solid oklch(0.33 0.012 160); font-family: 'Martian Mono', monospace; font-size: 10.5px;">
+            <span style="padding: 0 6px; color: oklch(0.9 0.16 100); font-weight: 600; letter-spacing: 0.06em;">SIM</span>
+            <button onClick="{{ toggleAutopilot }}" style="height: 26px; padding: 0 9px; border-radius: 5px; border: 1px solid oklch(0.33 0.012 160); background: {{ autopilotBg }}; cursor: pointer;">{{ autopilotLabel }}</button>
+            <span style="padding: 0 2px 0 6px; color: oklch(0.62 0.012 160);">gaze</span>
+            <sc-for list="{{ gazeButtons }}" as="g" hint-placeholder-count="5">
+              <button onClick="{{ g.onClick }}" title="{{ g.title }}" style="width: 26px; height: 26px; border-radius: 5px; border: 1px solid oklch(0.33 0.012 160); background: oklch(0.2 0.009 160); cursor: pointer;">{{ g.label }}</button>
+            </sc-for>
+            <button onClick="{{ lookAway }}" style="height: 26px; padding: 0 8px; border-radius: 5px; border: 1px solid oklch(0.33 0.012 160); background: oklch(0.2 0.009 160); cursor: pointer;">away</button>
+            <button onClick="{{ testPulse }}" style="height: 26px; padding: 0 8px; border-radius: 5px; border: 1px solid oklch(0.33 0.012 160); background: oklch(0.2 0.009 160); cursor: pointer;">pulse</button>
+            <button onClick="{{ testBloom }}" style="height: 26px; padding: 0 8px; border-radius: 5px; border: 1px solid oklch(0.33 0.012 160); background: oklch(0.2 0.009 160); cursor: pointer;">bloom</button>
+            <button onClick="{{ nextTurn }}" style="height: 26px; padding: 0 8px; border-radius: 5px; border: 1px solid oklch(0.33 0.012 160); background: oklch(0.2 0.009 160); cursor: pointer;">next turn</button>
+          </div>
+        </sc-if>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 10px; min-width: 0; min-height: 0;">
+
+        <sc-if value="{{ isBoot }}" hint-placeholder-val="{{ false }}">
+          <div style="flex: 1; display: flex; align-items: center; justify-content: center; border-radius: 10px; border: 1px solid oklch(0.27 0.01 160); background: oklch(0.185 0.009 160); font-family: 'Martian Mono', monospace; font-size: 12px; color: oklch(0.62 0.012 160);">Connecting to the backend…</div>
+        </sc-if>
+
+        <sc-if value="{{ isOnboarding }}" hint-placeholder-val="{{ false }}">
+          <div style="flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 20px; padding: 28px 28px 24px; border-radius: 10px; border: 1px solid oklch(0.27 0.01 160); background: oklch(0.185 0.009 160);">
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+              <span style="font-family: 'Martian Mono', monospace; font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: oklch(0.87 0.17 158);">Onboarding</span>
+              <h1 style="margin: 0; font-size: 34px; line-height: 1.08; font-weight: 600; letter-spacing: -0.025em; text-wrap: balance;">Who will be speaking through Flick?</h1>
+              <p style="margin: 0; font-size: 15px; line-height: 1.5; color: oklch(0.76 0.012 160); max-width: 54ch; text-wrap: pretty;">Describe their life in plain sentences. Gemini turns it into a memory graph of the people, places, routines and needs that every generated sentence is grounded in.</p>
+            </div>
+            <label style="display: flex; flex-direction: column; gap: 6px;">
+              <span style="font-family: 'Martian Mono', monospace; font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: oklch(0.62 0.012 160);">Name</span>
+              <input value="{{ name }}" onChange="{{ onName }}" style="height: 44px; padding: 0 14px; border-radius: 8px; border: 1px solid oklch(0.33 0.012 160); background: oklch(0.165 0.008 160); font-size: 16px;">
+            </label>
+            <label style="flex: 1; display: flex; flex-direction: column; gap: 6px; min-height: 220px;">
+              <span style="font-family: 'Martian Mono', monospace; font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: oklch(0.62 0.012 160);">Bio</span>
+              <textarea value="{{ bio }}" onChange="{{ onBio }}" style="flex: 1; min-height: 200px; resize: vertical; padding: 14px 16px; border-radius: 8px; border: 1px solid oklch(0.33 0.012 160); background: oklch(0.165 0.008 160); font-size: 15px; line-height: 1.6; text-wrap: pretty;"></textarea>
+            </label>
+            <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+              <sc-if value="{{ seedIdle }}" hint-placeholder-val="{{ true }}">
+                <button onClick="{{ seed }}" style="height: 48px; padding: 0 24px; border: 0; border-radius: 8px; background: oklch(0.87 0.17 158); color: oklch(0.17 0.03 158); font-weight: 700; font-size: 15px; cursor: pointer;">Seed memory graph</button>
+              </sc-if>
+              <sc-if value="{{ seedRunning }}" hint-placeholder-val="{{ false }}">
+                <div style="height: 48px; display: flex; align-items: center; padding: 0 20px; border-radius: 8px; border: 1px solid oklch(0.87 0.17 158 / 0.5); color: oklch(0.87 0.17 158); font-weight: 600; font-size: 15px;">Building the graph…</div>
+              </sc-if>
+              <sc-if value="{{ seedDone }}" hint-placeholder-val="{{ false }}">
+                <button onClick="{{ goLive }}" style="height: 48px; padding: 0 24px; border: 0; border-radius: 8px; background: oklch(0.87 0.17 158); color: oklch(0.17 0.03 158); font-weight: 700; font-size: 15px; cursor: pointer;">Go live →</button>
+              </sc-if>
+              <span style="font-size: 13px; line-height: 1.45; color: oklch(0.62 0.012 160); max-width: 40ch;">The bio goes to Gemini once. The graph it produces is stored only on this machine.</span>
+            </div>
+            <div style="display: grid; gap: 9px; padding-top: 4px;">
+              <sc-for list="{{ seedSteps }}" as="s" hint-placeholder-count="5">
+                <div style="display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; gap: 12px; font-size: 14px; color: {{ s.color }};">
+                  <span style="width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid {{ s.dot }}; background: {{ s.fill }};"></span>
+                  <span>{{ s.label }}</span>
+                  <span style="font-family: 'Martian Mono', monospace; font-size: 11px; color: oklch(0.62 0.012 160);">{{ s.meta }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isDashboard }}" hint-placeholder-val="{{ true }}">
+          <div style="flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px;">
+
+            <div style="flex: 1; min-height: 110px; display: flex; flex-direction: column; gap: 10px; padding: 13px 16px; border-radius: 10px; border: 1px solid oklch(0.27 0.01 160); background: oklch(0.185 0.009 160); overflow: hidden;">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-family: 'Martian Mono', monospace; font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: oklch(0.62 0.012 160);">Transcript</span>
+                <div style="flex: 1;"></div>
+                <sc-if value="{{ hasPartner }}" hint-placeholder-val="{{ false }}">
+                  <div style="display: flex; align-items: center; gap: 8px; font-family: 'Martian Mono', monospace; font-size: 10.5px;">
+                    <span style="color: oklch(0.62 0.012 160);">partner</span>
+                    <span style="color: oklch(0.80 0.13 25); font-weight: 600;">{{ partner.name }}</span>
+                    <span style="color: oklch(0.76 0.012 160);">{{ partner.conf }}</span>
+                  </div>
+                </sc-if>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 10px; min-height: 0; overflow: hidden;">
+                <sc-for list="{{ transcript }}" as="t" hint-placeholder-count="2">
+                  <div style="display: grid; grid-template-columns: 82px minmax(0, 1fr); gap: 12px; align-items: baseline; opacity: {{ t.opacity }};">
+                    <span style="font-family: 'Martian Mono', monospace; font-size: 10.5px; letter-spacing: 0.04em; text-transform: uppercase; color: {{ t.color }}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ t.who }}</span>
+                    <span style="font-size: {{ t.size }}; line-height: 1.35; text-wrap: pretty;">{{ t.text }}</span>
+                  </div>
+                </sc-for>
+                <sc-if value="{{ noTranscript }}" hint-placeholder-val="{{ false }}">
+                  <span style="font-size: 14px; color: oklch(0.62 0.012 160);">Nobody has spoken yet.</span>
+                </sc-if>
+              </div>
+            </div>
+
+            <div ref="{{ scoresRef }}" style="flex: none; display: flex; flex-direction: column; gap: 9px; padding: 12px 16px 14px; border-radius: 10px; border: 1px solid oklch(0.27 0.01 160); background: oklch(0.185 0.009 160);">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="flex: none; white-space: nowrap; font-family: 'Martian Mono', monospace; font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: oklch(0.62 0.012 160);">Target scores · ρ</span>
+                <span style="flex: none; white-space: nowrap; font-family: 'Martian Mono', monospace; font-size: 10.5px; color: oklch(0.9 0.16 100);">threshold {{ thresholdLabel }}</span>
+                <div style="flex: 1;"></div>
+                <span data-margin="1" style="flex: none; white-space: nowrap; font-family: 'Martian Mono', monospace; font-size: 10.5px; color: oklch(0.62 0.012 160);"></span>
+                <span data-chip="1" style="min-width: 0; max-width: 55%; overflow: hidden; text-overflow: ellipsis; padding: 3px 8px; border-radius: 5px; font-family: 'Martian Mono', monospace; font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em; background: oklch(0.25 0.01 160); color: oklch(0.76 0.012 160); white-space: nowrap;">WAITING</span>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 7px;">
+                <sc-for list="{{ targets }}" as="t" hint-placeholder-count="5">
+                  <div data-row="1" style="display: grid; grid-template-columns: minmax(0, 1.3fr) 54px minmax(0, 2fr) 36px 34px; align-items: center; gap: 10px;">
+                    <span style="font-size: 13px; color: {{ t.labelColor }}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ t.label }}</span>
+                    <span style="font-family: 'Martian Mono', monospace; font-size: 11px; color: oklch(0.76 0.012 160); text-align: right; white-space: nowrap;">{{ t.freq }}</span>
+                    <div style="position: relative; height: 12px; border-radius: 3px; background: oklch(0.23 0.01 160);">
+                      <div data-bar="1" style="position: absolute; left: 0; top: 0; bottom: 0; width: 0%; border-radius: 3px; background: oklch(0.45 0.02 160);"></div>
+                      <div style="position: absolute; top: -4px; bottom: -4px; left: {{ thresholdPct }}; border-left: 1.5px dashed oklch(0.9 0.16 100 / 0.9);"></div>
+                    </div>
+                    <span data-val="1" style="font-family: 'Martian Mono', monospace; font-size: 11px; text-align: right; color: oklch(0.76 0.012 160); font-variant-numeric: tabular-nums;">0.00</span>
+                    <div style="display: flex; gap: 3px;">
+                      <span data-pip="1" style="width: 8px; height: 8px; border-radius: 50%; border: 1px solid oklch(0.87 0.17 158 / 0.55);"></span>
+                      <span data-pip="1" style="width: 8px; height: 8px; border-radius: 50%; border: 1px solid oklch(0.87 0.17 158 / 0.55);"></span>
+                      <span data-pip="1" style="width: 8px; height: 8px; border-radius: 50%; border: 1px solid oklch(0.87 0.17 158 / 0.55);"></span>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+
+            <div style="flex: none; display: flex; flex-direction: column; gap: 6px; padding: 12px 16px; border-radius: 10px; border: 1px solid oklch(0.27 0.01 160); background: oklch(0.185 0.009 160);">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-family: 'Martian Mono', monospace; font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: oklch(0.62 0.012 160);">PSD · occipital mean</span>
+                <div style="flex: 1;"></div>
+                <span data-psd-readout="1" style="font-family: 'Martian Mono', monospace; font-size: 10.5px; color: oklch(0.76 0.012 160);"></span>
+              </div>
+              <div style="position: relative; height: 112px;"><div ref="{{ psdRef }}" style="position: absolute; inset: 0;"></div></div>
+              <div style="position: relative; height: 38px;">
+                <canvas ref="{{ wfRef }}" style="position: absolute; top: 0; left: 0; width: 100%; height: 38px; border-radius: 3px; background: oklch(0.16 0.01 160);"></canvas>
+                <span style="position: absolute; right: 0; top: 0; transform: translateX(-4px); font-family: 'Martian Mono', monospace; font-size: 9.5px; color: oklch(0.62 0.012 160); pointer-events: none;">now ↑</span>
+              </div>
+            </div>
+
+          </div>
+        </sc-if>
+      </div>
+    </section>
+
+    <sc-if value="{{ isDashboard }}" hint-placeholder-val="{{ true }}">
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+
+        <section style="display: flex; flex-direction: column; gap: 8px; padding: 12px 16px 10px; border-radius: 10px; border: 1px solid oklch(0.27 0.01 160); background: oklch(0.185 0.009 160);">
+          <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+            <span style="font-family: 'Martian Mono', monospace; font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: oklch(0.62 0.012 160);">EEG · 8 channels · 4 s</span>
+            <span style="font-family: 'Martian Mono', monospace; font-size: 10.5px; color: oklch(0.62 0.012 160);">{{ eegMeta }}</span>
+            <div style="flex: 1;"></div>
+            <div style="display: flex; align-items: center; gap: 8px; font-family: 'Martian Mono', monospace; font-size: 10.5px; color: oklch(0.76 0.012 160);"><span style="width: 2px; height: 14px; background: oklch(0.76 0.012 160);"></span>20 µV</div>
+          </div>
+          <div style="display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 10px; height: 208px;">
+            <div style="display: grid; grid-template-rows: repeat(8, 1fr); align-items: center; font-family: 'Martian Mono', monospace; font-size: 10.5px;">
+              <sc-for list="{{ channels }}" as="c" hint-placeholder-count="8">
+                <span style="color: {{ c.color }};">{{ c.name }}</span>
+              </sc-for>
+            </div>
+            <div style="position: relative; min-width: 0;"><div ref="{{ eegRef }}" style="position: absolute; inset: 0;"></div></div>
+          </div>
+          <div style="display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 10px; font-family: 'Martian Mono', monospace; font-size: 10px; color: oklch(0.62 0.012 160);">
+            <span></span>
+            <div style="display: flex; justify-content: space-between;"><span>−4 s</span><span>−3 s</span><span>−2 s</span><span>−1 s</span><span>now</span></div>
+          </div>
+        </section>
+
+        <section style="display: flex; flex-direction: column; gap: 12px; padding: 13px 16px 14px; border-radius: 10px; border: 1px solid oklch(0.27 0.01 160); background: oklch(0.185 0.009 160);">
+          <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+            <span style="font-family: 'Martian Mono', monospace; font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: oklch(0.62 0.012 160);">Conversation</span>
+            <div style="display: flex; align-items: stretch; gap: 4px; flex-wrap: wrap; flex: 1; min-width: 0;">
+              <sc-for list="{{ pipeline }}" as="s" hint-placeholder-count="8">
+                <div style="display: flex; flex-direction: column; gap: 2px; min-width: 78px; padding: 5px 9px; border-radius: 6px; background: {{ s.bg }}; border: 1px solid {{ s.border }};">
+                  <span style="font-family: 'Martian Mono', monospace; font-size: 9.5px; letter-spacing: 0.06em; text-transform: uppercase; color: {{ s.color }};">{{ s.label }}</span>
+                  <span data-step="{{ s.key }}" style="font-family: 'Martian Mono', monospace; font-size: 11px; color: {{ s.timeColor }}; font-variant-numeric: tabular-nums;">{{ s.time }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div ref="{{ tilesRef }}" style="display: flex; gap: 10px; align-items: stretch; min-height: 118px;">
+            <sc-if value="{{ bodyIdle }}" hint-placeholder-val="{{ true }}">
+              <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 14px 18px; border-radius: 8px; border: 1px dashed oklch(0.33 0.012 160);">
+                <span style="font-size: 20px; font-weight: 500; color: oklch(0.76 0.012 160);">{{ idleTitle }}</span>
+                <span style="font-size: 14px; color: oklch(0.62 0.012 160); text-wrap: pretty;">{{ idleSub }}</span>
+              </div>
+            </sc-if>
+            <sc-if value="{{ bodyGen }}" hint-placeholder-val="{{ false }}">
+              <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 12px; padding: 14px 18px; border-radius: 8px; background: oklch(0.165 0.008 160); border: 1px solid oklch(0.27 0.01 160);">
+                <span style="font-size: 20px; font-weight: 500;">{{ genTitle }}</span>
+                <div style="position: relative; height: 3px; border-radius: 2px; background: oklch(0.25 0.01 160); overflow: hidden;"><div data-gen-bar="1" style="position: absolute; top: 0; bottom: 0; width: 28%; left: 0; border-radius: 2px; background: oklch(0.87 0.17 158);"></div></div>
+                <span style="font-family: 'Martian Mono', monospace; font-size: 11px; color: oklch(0.62 0.012 160);">{{ genSub }}</span>
+              </div>
+            </sc-if>
+            <sc-if value="{{ bodyTiles }}" hint-placeholder-val="{{ false }}">
+              <sc-for list="{{ tiles }}" as="t" hint-placeholder-count="5">
+                <div data-tile="{{ t.idx }}" style="position: relative; flex: {{ t.flex }}; min-width: 0; display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 8px; background: {{ t.bg }}; border: 1.5px solid {{ t.border }}; opacity: {{ t.opacity }}; transition: flex 450ms cubic-bezier(.2,.8,.2,1), background 300ms, border-color 300ms, opacity 300ms;">
+                  <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; font-family: 'Martian Mono', monospace; font-size: 10.5px; color: oklch(0.62 0.012 160);">
+                    <span>{{ t.freq }}</span>
+                    <span style="text-transform: uppercase; letter-spacing: 0.06em;">{{ t.tag }}</span>
+                  </div>
+                  <span style="font-size: {{ t.size }}; line-height: 1.28; font-weight: {{ t.weight }}; color: {{ t.color }}; text-wrap: pretty; transition: font-size 400ms;">{{ t.label }}</span>
+                  <div style="margin-top: auto; height: 4px; border-radius: 2px; background: oklch(0.25 0.01 160); overflow: hidden;"><div data-meter="1" style="height: 100%; width: 0%; border-radius: 2px; background: oklch(0.6 0.03 160);"></div></div>
+                </div>
+              </sc-for>
+            </sc-if>
+            <sc-if value="{{ bodySpeaking }}" hint-placeholder-val="{{ false }}">
+              <div style="flex: 1; display: flex; flex-direction: column; gap: 12px; padding: 16px 20px; border-radius: 8px; background: oklch(0.87 0.17 158 / 0.07); border: 1.5px solid oklch(0.87 0.17 158 / 0.75);">
+                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-family: 'Martian Mono', monospace; font-size: 10.5px;">
+                  <span style="color: oklch(0.87 0.17 158); font-weight: 600; letter-spacing: 0.06em;">{{ speakLabel }}</span>
+                  <div style="display: flex; align-items: center; gap: 2px; height: 18px;">
+                    <span data-wave="1" style="width: 3px; height: 4px; border-radius: 2px; background: oklch(0.87 0.17 158);"></span>
+                    <span data-wave="1" style="width: 3px; height: 4px; border-radius: 2px; background: oklch(0.87 0.17 158);"></span>
+                    <span data-wave="1" style="width: 3px; height: 4px; border-radius: 2px; background: oklch(0.87 0.17 158);"></span>
+                    <span data-wave="1" style="width: 3px; height: 4px; border-radius: 2px; background: oklch(0.87 0.17 158);"></span>
+                    <span data-wave="1" style="width: 3px; height: 4px; border-radius: 2px; background: oklch(0.87 0.17 158);"></span>
+                    <span data-wave="1" style="width: 3px; height: 4px; border-radius: 2px; background: oklch(0.87 0.17 158);"></span>
+                    <span data-wave="1" style="width: 3px; height: 4px; border-radius: 2px; background: oklch(0.87 0.17 158);"></span>
+                    <span data-wave="1" style="width: 3px; height: 4px; border-radius: 2px; background: oklch(0.87 0.17 158);"></span>
+                    <span data-wave="1" style="width: 3px; height: 4px; border-radius: 2px; background: oklch(0.87 0.17 158);"></span>
+                    <span data-wave="1" style="width: 3px; height: 4px; border-radius: 2px; background: oklch(0.87 0.17 158);"></span>
+                    <span data-wave="1" style="width: 3px; height: 4px; border-radius: 2px; background: oklch(0.87 0.17 158);"></span>
+                    <span data-wave="1" style="width: 3px; height: 4px; border-radius: 2px; background: oklch(0.87 0.17 158);"></span>
+                  </div>
+                  <span style="color: oklch(0.94 0.01 160);">{{ voice.label }}</span>
+                  <span style="color: oklch(0.62 0.012 160);">{{ voice.meta }}</span>
+                </div>
+                <div style="display: flex; flex-wrap: wrap; gap: 0 0.28em; font-size: 30px; line-height: 1.25; font-weight: 500; letter-spacing: -0.012em;">
+                  <sc-for list="{{ spokenWords }}" as="w" hint-placeholder-count="8">
+                    <span data-word="1" style="color: oklch(0.45 0.012 160); transition: color 140ms;">{{ w.text }}</span>
+                  </sc-for>
+                </div>
+                <sc-if value="{{ hasLearned }}" hint-placeholder-val="{{ false }}">
+                  <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                    <span style="font-family: 'Martian Mono', monospace; font-size: 10.5px; letter-spacing: 0.06em; color: oklch(0.87 0.17 158);">LEARNED</span>
+                    <sc-for list="{{ learned }}" as="l" hint-placeholder-count="2">
+                      <span style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 999px; background: oklch(0.2 0.009 160); border: 1px solid oklch(0.33 0.012 160); font-size: 12.5px;"><span style="width: 7px; height: 7px; border-radius: 50%; background: {{ l.color }};"></span>{{ l.label }}</span>
+                    </sc-for>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-if>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <sc-if value="{{ hasGrounding }}" hint-placeholder-val="{{ false }}">
+              <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                <span style="font-family: 'Martian Mono', monospace; font-size: 10.5px; letter-spacing: 0.06em; color: oklch(0.62 0.012 160);">GROUNDED IN</span>
+                <sc-for list="{{ grounding }}" as="g" hint-placeholder-count="4">
+                  <span style="display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px; background: oklch(0.2 0.009 160); border: 1px solid oklch(0.3 0.011 160); font-size: 12.5px; color: oklch(0.86 0.01 160);"><span style="width: 7px; height: 7px; border-radius: 50%; background: {{ g.color }};"></span>{{ g.label }}</span>
+                </sc-for>
+              </div>
+            </sc-if>
+            <div style="flex: 1;"></div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span style="font-family: 'Martian Mono', monospace; font-size: 10.5px; color: oklch(0.62 0.012 160);" title="DEMO-4: bypasses the microphone only, never the classifier">SCRIPTED PROMPT</span>
+              <input value="{{ prompt }}" onChange="{{ onPrompt }}" onKeyDown="{{ promptKey }}" placeholder="Type what the partner says" style="width: 280px; max-width: 42vw; height: 32px; padding: 0 10px; border-radius: 6px; border: 1px solid oklch(0.33 0.012 160); background: oklch(0.165 0.008 160); font-size: 13px;">
+              <button onClick="{{ sendPrompt }}" style="height: 32px; padding: 0 12px; border-radius: 6px; border: 1px solid oklch(0.33 0.012 160); background: oklch(0.22 0.01 160); font-size: 13px; cursor: pointer;">Send</button>
+            </div>
+          </div>
+        </section>
+
+        <sc-if value="{{ narrow }}" hint-placeholder-val="{{ false }}">
+          <div style="display: flex; gap: 4px; padding: 4px; border-radius: 8px; border: 1px solid oklch(0.27 0.01 160); background: oklch(0.165 0.008 160); font-family: 'Martian Mono', monospace; font-size: 11px;">
+            <button onClick="{{ tabAnalytics }}" style="flex: 1; height: 32px; border-radius: 6px; border: 0; background: {{ tabBg.analytics }}; cursor: pointer;">Analytics</button>
+            <button onClick="{{ tabPrivacy }}" style="flex: 1; height: 32px; border-radius: 6px; border: 0; background: {{ tabBg.privacy }}; cursor: pointer;">Privacy</button>
+            <button onClick="{{ tabSpectator }}" style="flex: 1; height: 32px; border-radius: 6px; border: 0; background: {{ tabBg.spectator }}; cursor: pointer;">Spectator</button>
+          </div>
+        </sc-if>
+
+        <section style="display: grid; grid-template-columns: {{ bottomCols }}; gap: 10px; align-items: start;">
+
+          <div style="display: {{ disp.analytics }}; flex-direction: column; gap: 14px; min-width: 0; padding: 14px 16px 16px; border-radius: 10px; border: 1px solid oklch(0.27 0.01 160); background: oklch(0.185 0.009 160);">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="font-family: 'Martian Mono', monospace; font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: oklch(0.62 0.012 160);">Session analytics</span>
+              <div style="flex: 1;"></div>
+              <span style="font-family: 'Martian Mono', monospace; font-size: 10.5px; color: oklch(0.62 0.012 160);">{{ an.drift }}</span>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;">
+              <div style="display: flex; flex-direction: column; gap: 4px; min-height: 76px; padding: 10px 12px; border-radius: 8px; background: oklch(0.165 0.008 160); border: 1px solid oklch(0.27 0.01 160);">
+                <span style="font-family: 'Martian Mono', monospace; font-size: 10px; letter-spacing: 0.06em; color: oklch(0.62 0.012 160);">ACCURACY</span>
+                <sc-if value="{{ hasCued }}" hint-placeholder-val="{{ false }}"><span style="font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums;">{{ an.accuracy }}</span></sc-if>
+                <sc-if value="{{ noCued }}" hint-placeholder-val="{{ true }}"><span style="font-size: 13px; line-height: 1.35; color: oklch(0.62 0.012 160);">Run a cued block to measure</span></sc-if>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 4px; min-height: 76px; padding: 10px 12px; border-radius: 8px; background: oklch(0.165 0.008 160); border: 1px solid oklch(0.27 0.01 160);">
+                <span style="font-family: 'Martian Mono', monospace; font-size: 10px; letter-spacing: 0.06em; color: oklch(0.62 0.012 160);">ITR · BITS/MIN</span>
+                <sc-if value="{{ hasCued }}" hint-placeholder-val="{{ false }}"><span style="font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums;">{{ an.itr }}</span></sc-if>
+                <sc-if value="{{ noCued }}" hint-placeholder-val="{{ true }}"><button onClick="{{ runCued }}" style="align-self: flex-start; height: 28px; padding: 0 10px; border-radius: 6px; border: 1px solid oklch(0.33 0.012 160); background: oklch(0.22 0.01 160); font-size: 12.5px; cursor: pointer;">Run cued block</button></sc-if>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: 8px; background: oklch(0.165 0.008 160); border: 1px solid oklch(0.27 0.01 160);">
+                <span style="font-family: 'Martian Mono', monospace; font-size: 10px; letter-spacing: 0.06em; color: oklch(0.62 0.012 160);">SELECTIONS</span>
+                <span style="font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums;">{{ an.selections }}</span>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: 8px; background: oklch(0.165 0.008 160); border: 1px solid oklch(0.27 0.01 160);">
+                <span style="font-family: 'Martian Mono', monospace; font-size: 10px; letter-spacing: 0.06em; color: oklch(0.62 0.012 160);">MEAN SELECTION TIME</span>
+                <span style="font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums;">{{ an.latency }}</span>
+              </div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 7px;">
+              <span style="font-family: 'Martian Mono', monospace; font-size: 10px; letter-spacing: 0.06em; color: oklch(0.62 0.012 160);">MEAN ρ BY TARGET · LAST 2 MIN</span>
+              <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px;">
+                <sc-for list="{{ sparks }}" as="s" hint-placeholder-count="5">
+                  <div style="display: flex; flex-direction: column; gap: 3px; min-width: 0;">
+                    <svg viewBox="0 0 100 32" preserveAspectRatio="none" style="width: 100%; height: 32px; display: block; border-bottom: 1px solid oklch(0.27 0.01 160);"><polyline points="{{ s.points }}" fill="none" stroke="{{ s.stroke }}" stroke-width="1.5" vector-effect="non-scaling-stroke"></polyline></svg>
+                    <div style="display: flex; justify-content: space-between; gap: 4px; font-family: 'Martian Mono', monospace; font-size: 10px; color: oklch(0.76 0.012 160);"><span>{{ s.freq }}</span><span style="color: oklch(0.62 0.012 160);">{{ s.last }}</span></div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 7px;">
+              <span style="font-family: 'Martian Mono', monospace; font-size: 10px; letter-spacing: 0.06em; color: oklch(0.62 0.012 160);">WORDS PER MINUTE</span>
+              <sc-for list="{{ wpmRows }}" as="w" hint-placeholder-count="3">
+                <div style="display: grid; grid-template-columns: 118px minmax(0, 1fr) 48px; align-items: center; gap: 10px;">
+                  <span style="font-size: 12.5px; color: {{ w.labelColor }};">{{ w.label }}</span>
+                  <div style="height: 8px; border-radius: 4px; background: oklch(0.23 0.01 160);"><div style="height: 100%; width: {{ w.pct }}; border-radius: 4px; background: {{ w.color }};"></div></div>
+                  <span style="font-family: 'Martian Mono', monospace; font-size: 11px; text-align: right; color: oklch(0.86 0.01 160);">{{ w.value }}</span>
+                </div>
+              </sc-for>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <div style="display: flex; justify-content: space-between; gap: 10px; font-family: 'Martian Mono', monospace; font-size: 10px; letter-spacing: 0.06em; color: oklch(0.62 0.012 160);"><span>FRAME INTEGRITY · 60 S</span><span>{{ integrityMeta }}</span></div>
+              <div style="display: grid; grid-template-columns: repeat(60, minmax(0, 1fr)); gap: 1px; height: 16px;">
+                <sc-for list="{{ integrity }}" as="c" hint-placeholder-count="60">
+                  <span style="background: {{ c.bg }}; border-top: 3px solid {{ c.mark }};"></span>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+
+          <div style="display: {{ disp.privacy }}; flex-direction: column; gap: 13px; min-width: 0; padding: 14px 16px 16px; border-radius: 10px; border: 1px solid oklch(0.27 0.01 160); background: oklch(0.185 0.009 160);">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="font-family: 'Martian Mono', monospace; font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: oklch(0.62 0.012 160);">Privacy</span>
+              <div style="flex: 1;"></div>
+              <span style="font-family: 'Martian Mono', monospace; font-size: 10.5px; color: oklch(0.86 0.01 160);">{{ costLine }}</span>
+            </div>
+            <p style="margin: 0; font-size: 16px; line-height: 1.4;">This session, data has left this machine <span style="color: oklch(0.87 0.17 158); font-weight: 700;">{{ flowTotal }}</span> times.</p>
+            <div style="display: flex; flex-direction: column; gap: 9px;">
+              <sc-for list="{{ ledger }}" as="l" hint-placeholder-count="3">
+                <div style="display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 12px; padding-bottom: 9px; border-bottom: 1px solid oklch(0.25 0.01 160);">
+                  <span style="font-size: 14px; font-weight: 600;">→ {{ l.dest }}</span>
+                  <span style="font-family: 'Martian Mono', monospace; font-size: 11px; color: oklch(0.86 0.01 160); text-align: right;">{{ l.count }}</span>
+                  <span style="grid-column: 1 / -1; font-size: 12.5px; color: oklch(0.76 0.012 160);">{{ l.what }}</span>
+                  <span style="grid-column: 1 / -1; font-size: 12.5px; color: oklch(0.62 0.012 160);">sends: {{ l.sends }}</span>
+                </div>
+              </sc-for>
+              <sc-if value="{{ noFlows }}" hint-placeholder-val="{{ false }}"><span style="font-size: 13px; color: oklch(0.62 0.012 160);">Nothing has left this machine yet.</span></sc-if>
+            </div>
+            <div style="display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 5px 12px; font-size: 12.5px; line-height: 1.4;">
+              <span style="color: oklch(0.62 0.012 160);">Never sent</span><span style="color: oklch(0.86 0.01 160);">memory graph, raw EEG, voice enrollment audio</span>
+              <span style="color: oklch(0.62 0.012 160);">Stored here</span><span style="color: oklch(0.86 0.01 160);">Kuzu graph ({{ counts.nodes }} nodes), EEG telemetry (local Postgres)</span>
+            </div>
+            <div style="display: flex; align-items: flex-start; gap: 12px; padding: 12px; border-radius: 8px; background: oklch(0.165 0.008 160); border: 1px solid {{ localBorder }};">
+              <button onClick="{{ toggleLocal }}" role="switch" aria-checked="{{ localModeStr }}" aria-label="Local Mode" style="flex: none; width: 46px; height: 26px; margin-top: 1px; padding: 3px; border: 0; border-radius: 999px; background: {{ sw.bg }}; display: flex; justify-content: {{ sw.justify }}; cursor: pointer; transition: background 200ms;"><span style="width: 20px; height: 20px; border-radius: 50%; background: {{ sw.knob }};"></span></button>
+              <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0;">
+                <span style="font-size: 14px; font-weight: 600;">Local Mode</span>
+                <span style="font-size: 12.5px; line-height: 1.45; color: oklch(0.76 0.012 160); text-wrap: pretty;">{{ localCopy }}</span>
+              </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <span style="font-size: 12.5px; color: oklch(0.62 0.012 160);">Purge stored data</span>
+              <sc-if value="{{ noPurge }}" hint-placeholder-val="{{ true }}">
+                <div style="display: flex; gap: 6px;">
+                  <button onClick="{{ purgeGraph }}" style="height: 28px; padding: 0 10px; border-radius: 6px; border: 1px solid oklch(0.33 0.012 160); background: transparent; font-size: 12.5px; cursor: pointer;">Graph</button>
+                  <button onClick="{{ purgeTelemetry }}" style="height: 28px; padding: 0 10px; border-radius: 6px; border: 1px solid oklch(0.33 0.012 160); background: transparent; font-size: 12.5px; cursor: pointer;">Telemetry</button>
+                  <button onClick="{{ purgeAll }}" style="height: 28px; padding: 0 10px; border-radius: 6px; border: 1px solid oklch(0.33 0.012 160); background: transparent; font-size: 12.5px; cursor: pointer;">All</button>
+                </div>
+              </sc-if>
+              <sc-if value="{{ hasPurge }}" hint-placeholder-val="{{ false }}">
+                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                  <span style="font-size: 12.5px; color: oklch(0.8 0.14 30);">{{ purgeQuestion }}</span>
+                  <button onClick="{{ purgeConfirm }}" style="height: 28px; padding: 0 10px; border-radius: 6px; border: 0; background: oklch(0.7 0.19 25); color: oklch(0.15 0.02 25); font-weight: 700; font-size: 12.5px; cursor: pointer;">Delete</button>
+                  <button onClick="{{ purgeCancel }}" style="height: 28px; padding: 0 10px; border-radius: 6px; border: 1px solid oklch(0.33 0.012 160); background: transparent; font-size: 12.5px; cursor: pointer;">Keep</button>
+                </div>
+              </sc-if>
+            </div>
+          </div>
+
+          <div style="display: {{ disp.spectator }}; flex-direction: column; gap: 14px; min-width: 0; padding: 14px 16px 16px; border-radius: 10px; border: 1px solid oklch(0.27 0.01 160); background: oklch(0.185 0.009 160);">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="font-family: 'Martian Mono', monospace; font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: oklch(0.62 0.012 160);">Spectator view</span>
+              <div style="flex: 1;"></div>
+              <span style="font-family: 'Martian Mono', monospace; font-size: 10.5px; color: {{ viewersColor }};">{{ viewersLabel }}</span>
+            </div>
+            <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
+              <div style="flex: none; width: 156px; height: 156px; padding: 10px; border-radius: 10px; background: {{ qrBg }};">
+                <sc-if value="{{ hasQr }}" hint-placeholder-val="{{ false }}"><img src="{{ qr }}" alt="QR code for the spectator view" style="display: block; width: 100%; height: 100%; image-rendering: pixelated;"></sc-if>
+              </div>
+              <div style="flex: 1; min-width: 160px; display: flex; flex-direction: column; gap: 8px;">
+                <span style="font-size: 17px; font-weight: 600; line-height: 1.3;">{{ spectatorTitle }}</span>
+                <sc-if value="{{ hasSpectatorUrl }}" hint-placeholder-val="{{ false }}"><a href="{{ spectatorUrl }}" target="_blank" rel="noopener" style="font-family: 'Martian Mono', monospace; font-size: 11px; word-break: break-all;">{{ spectatorUrl }}</a></sc-if>
+                <span style="font-size: 12.5px; line-height: 1.45; color: oklch(0.76 0.012 160); text-wrap: pretty;">Winning target, transcript and spoken lines at 1 Hz. The relay is outbound only and nothing it receives reaches the pipeline.</span>
+              </div>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; font-size: 12.5px; line-height: 1.5;">
+              <div style="display: flex; flex-direction: column; gap: 3px;">
+                <span style="font-family: 'Martian Mono', monospace; font-size: 10px; letter-spacing: 0.06em; color: oklch(0.87 0.17 158);">SENT</span>
+                <span style="color: oklch(0.86 0.01 160);">Winning target + label</span>
+                <span style="color: oklch(0.86 0.01 160);">ρ values, 1 Hz</span>
+                <span style="color: oklch(0.86 0.01 160);">Transcript, spoken lines</span>
+                <span style="color: oklch(0.86 0.01 160);">Node counts by kind</span>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 3px;">
+                <span style="font-family: 'Martian Mono', monospace; font-size: 10px; letter-spacing: 0.06em; color: oklch(0.8 0.14 30);">NEVER SENT</span>
+                <span style="color: oklch(0.76 0.012 160);">Raw EEG</span>
+                <span style="color: oklch(0.76 0.012 160);">Per-window scores</span>
+                <span style="color: oklch(0.76 0.012 160);">Graph node text</span>
+                <span style="color: oklch(0.76 0.012 160);">Keys, internal ids</span>
+              </div>
+            </div>
+          </div>
+
+        </section>
+      </div>
+    </sc-if>
+  </main>
+
+  <sc-if value="{{ hasNote }}" hint-placeholder-val="{{ false }}">
+    <div role="status" style="position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 60; max-width: min(560px, 90vw); padding: 10px 16px; border-radius: 8px; background: oklch(0.24 0.01 160); border: 1px solid oklch(0.38 0.012 160); font-size: 13.5px; box-shadow: 0 10px 30px oklch(0 0 0 / 0.4);">{{ note }}</div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;dataSource&quot;: {&quot;editor&quot;: &quot;enum&quot;, &quot;options&quot;: [&quot;mock&quot;, &quot;auto&quot;, &quot;backend&quot;], &quot;default&quot;: &quot;mock&quot;, &quot;tsType&quot;: &quot;'mock' | 'auto' | 'backend'&quot;, &quot;section&quot;: &quot;Data&quot;}, &quot;wsUrl&quot;: {&quot;editor&quot;: &quot;text&quot;, &quot;default&quot;: &quot;ws://localhost:8000/ws&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Data&quot;}, &quot;mockStartsSeeded&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: false, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Data&quot;}, &quot;autoRotate&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: true, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Memory graph&quot;}, &quot;bloomStrength&quot;: {&quot;editor&quot;: &quot;range&quot;, &quot;default&quot;: 1.4, &quot;min&quot;: 0, &quot;max&quot;: 3, &quot;step&quot;: 0.1, &quot;tsType&quot;: &quot;number&quot;, &quot;section&quot;: &quot;Memory graph&quot;}}">
+class Component extends DCLogic {
+  static C = {
+    accent: 'oklch(0.87 0.17 158)', text: 'oklch(0.94 0.01 160)', text2: 'oklch(0.76 0.012 160)', muted: 'oklch(0.62 0.012 160)',
+    line: 'oklch(0.27 0.01 160)', line2: 'oklch(0.33 0.012 160)', panel2: 'oklch(0.165 0.008 160)', warn: 'oklch(0.9 0.16 100)',
+    danger: 'oklch(0.72 0.18 28)', dim: 'oklch(0.45 0.02 160)', mid: 'oklch(0.62 0.05 160)',
+  };
+  static KIND = { Person: 'oklch(0.80 0.13 25)', Place: 'oklch(0.78 0.11 250)', Thing: 'oklch(0.85 0.12 95)', Activity: 'oklch(0.76 0.13 305)', Need: 'oklch(0.80 0.14 60)', Memory: 'oklch(0.80 0.10 200)' };
+  static STEPS = [['TRANSCRIBING', 'Transcribe'], ['GROUNDING', 'Ground'], ['INTENT_GEN', 'Intents'], ['INTENT_WAIT', 'Select'], ['CANDIDATE_GEN', 'Sentences'], ['CANDIDATE_WAIT', 'Select'], ['SPEAKING', 'Speak'], ['LEARNING', 'Learn']];
+  static SEED_STEPS = [['seed:extract', 'Extract people, places and routines', 'Gemini'], ['seed:expand', 'Expand each person and activity', 'Gemini'], ['seed:embed', 'Embed every node', 'MiniLM, local'], ['seed:insert', 'Write to the graph', 'Kuzu, one transaction'], ['seed:stream', 'Grow the brain', '~10 nodes / 150 ms']];
+  static CHANNELS = ['O1', 'Oz', 'O2', 'POz', 'PO3', 'PO4', 'Pz', 'CPz'];
+  static STAGE = { partner_id: 'partner ID', intents: 'intent labels', candidates: 'sentences', extraction: 'fact extraction', seed: 'graph seeding', stt: 'transcription', tts: 'speech synthesis', spectator: 'public live view' };
+
+  constructor(props) {
+    super(props);
+    this.state = {
+      view: 'boot', conn: 'connecting', retryMs: 0, status: null, fsm: 'UNSEEDED', fsmDetail: '', steps: {},
+      transcript: [], partner: null, round: null, spoken: null, learned: [], grounding: [],
+      analytics: null, rhoHist: [], wpm: { words: 0, secs: 0 }, flows: {}, flowTotal: 0, cost: null,
+      spectator: null, qr: '', integrity: [], counts: { nodes: 0, edges: 0, Person: 0, Place: 0, Thing: 0, Activity: 0, Need: 0, Memory: 0 },
+      events: [], seed: 'idle', seedDetail: '', bio: '', name: '', autopilot: true, purge: null, narrow: false, tab: 'analytics',
+      prompt: '', brainReady: false, note: '',
+    };
+    this.live = { scores: null, disp: [0, 0, 0, 0, 0], flash: null };
+    this.kinds = new Map(); this.edgeIds = new Set(); this.brainQueue = []; this.selMarks = new Set();
+    this.brainRef = el => { this.brainEl = el; this.initBrain(); };
+    this.eegRef = el => { if (el === this.eegEl) return; if (this.eeg) { this.eeg.destroy(); this.eeg = null; } this.eegEl = el; this.initPlots(); };
+    this.psdRef = el => { if (el === this.psdEl) return; if (this.psd) { this.psd.destroy(); this.psd = null; } this.psdEl = el; this.initPlots(); };
+    this.wfRef = el => { this.wfEl = el; if (this.psd) this.psd.wf = el; };
+    this.scoresRef = el => { this.scoresEl = el; };
+    this.tilesRef = el => { this.tilesEl = el; };
+    this.tick = this.tick.bind(this);
+  }
+
+  async componentDidMount() {
+    this.t0 = performance.now();
+    this.onResize = () => { const narrow = window.innerWidth < 1100; if (narrow !== this.state.narrow) this.setState({ narrow }); };
+    this.onKey = e => {
+      const tag = (e.target && e.target.tagName) || '';
+      if (/INPUT|TEXTAREA|SELECT/.test(tag) || !/^[1-5]$/.test(e.key) || !this.sock) return;
+      this.sock.send({ type: 'client.key_press', ts: Date.now() / 1000, key: e.key });
+    };
+    window.addEventListener('resize', this.onResize);
+    window.addEventListener('keydown', this.onKey);
+    this.onResize();
+    this.raf = requestAnimationFrame(this.tick);
+    try {
+      const [wsm, persona] = await Promise.all([import('./flick/ws.js'), import('./flick/persona.js')]);
+      this.wsm = wsm;
+      this.setState(s => ({ bio: s.bio || persona.PERSONA_BIO, name: s.name || persona.PERSONA_NAME }));
+      this.startSocket();
+    } catch (e) { console.error('flick: failed to load client', e); this.toast(`Failed to load the client: ${e.message}`); }
+    import('./flick/plots.js').then(async m => { this.plots = m; this.uPlot = await m.loadUPlot(); this.initPlots(); this.initBrain(); })
+      .catch(e => { console.error('flick: plots unavailable', e); this.toast('Plot library failed to load'); });
+    import('./flick/brain.js').then(m => { this.brainMod = m; this.initBrain(); }).catch(e => { console.error('flick: brain unavailable', e); this.toast('3D graph failed to load'); });
+  }
+
+  componentWillUnmount() {
+    cancelAnimationFrame(this.raf);
+    window.removeEventListener('resize', this.onResize);
+    window.removeEventListener('keydown', this.onKey);
+    if (this.sock) this.sock.close();
+    if (this.brain) this.brain.destroy();
+  }
+
+  componentDidUpdate(prev) {
+    const p = this.props;
+    if (this.brain && prev.autoRotate !== p.autoRotate) this.brain.setAutoRotate(p.autoRotate ?? true);
+    if (this.brain && prev.bloomStrength !== p.bloomStrength) this.brain.setBloomStrength(p.bloomStrength ?? 1.4);
+    if (this.wsm && (prev.dataSource !== p.dataSource || prev.wsUrl !== p.wsUrl || prev.mockStartsSeeded !== p.mockStartsSeeded)) this.startSocket();
+  }
+
+  startSocket() {
+    if (this.sock) this.sock.close();
+    this.kinds.clear(); this.edgeIds.clear();
+    if (this.brain) this.brain.setSnapshot({ nodes: [], edges: [] });
+    this.setState({ view: 'boot', round: null, spoken: null, transcript: [], flows: {}, flowTotal: 0, cost: null, events: [], steps: {}, counts: { nodes: 0, edges: 0, Person: 0, Place: 0, Thing: 0, Activity: 0, Need: 0, Memory: 0 } });
+    const p = this.props;
+    this.sock = new this.wsm.FlickSocket({
+      url: p.wsUrl || 'ws://localhost:8000/ws',
+      mode: p.dataSource || 'mock',
+      mockOptions: { startSeeded: !!p.mockStartsSeeded },
+      onMessage: m => this.onMsg(m),
+      onConn: c => this.onConn(c),
+    });
+    this.sock.start();
+  }
+
+  onConn(c) {
+    this.setState({ conn: c.state, retryMs: c.retryMs || 0 });
+    if (c.state === 'live' || c.state === 'mock') this.checkOnboarding();
+  }
+
+  async checkOnboarding() {
+    try {
+      const s = await this.sock.api('GET', '/api/onboarding/status');
+      this.setState({ view: s.seeded ? 'dashboard' : 'onboarding', seed: s.seeded ? 'done' : 'idle' });
+    } catch (e) { console.error('flick: onboarding status', e); this.toast(`Onboarding status failed: ${e.message}`); }
+  }
+
+  initBrain() {
+    if (!this.brainEl || !this.brainMod || !this.plots || this.brain || this.brainLoading) return;
+    this.brainLoading = true;
+    this.brainMod.MemoryBrain.create(this.brainEl, { background: this.plots.hex(0.14, 0.008, 160), autoRotate: this.props.autoRotate ?? true, bloomStrength: this.props.bloomStrength ?? 1.4 })
+      .then(b => { this.brain = b; this.brainQueue.splice(0).forEach(fn => fn(b)); this.setState({ brainReady: true }); })
+      .catch(e => { console.error('flick: MemoryBrain failed', e); this.toast('3D graph failed to start'); });
+  }
+  brainDo(fn) { if (this.brain) fn(this.brain); else this.brainQueue.push(fn); }
+
+  initPlots() {
+    const C = Component.C;
+    if (!this.uPlot) return;
+    if (this.eegEl && !this.eeg) {
+      const colors = Component.CHANNELS.map((c, k) => (k < 3 ? 'oklch(0.87 0.12 158)' : k < 6 ? 'oklch(0.8 0.05 160)' : 'oklch(0.7 0.02 160)'));
+      this.eeg = new this.plots.EegTrace(this.uPlot, this.eegEl, { channels: Component.CHANNELS, colors, grid: 'rgba(255,255,255,0.06)' });
+    }
+    if (this.psdEl && !this.psd) {
+      this.psd = new this.plots.PsdPlot(this.uPlot, this.psdEl, this.wfEl, { accent: C.accent, text: C.text, muted: C.muted, grid: 'rgba(255,255,255,0.22)', fill: 'oklch(0.87 0.17 158 / 0.1)' });
+      const st = this.state.status;
+      if (st && st.frequencies) this.psd.setTargets(st.frequencies, st.cancel_idx);
+    }
+  }
+
+  toast(note) { clearTimeout(this.noteTimer); this.setState({ note }); this.noteTimer = setTimeout(() => this.setState({ note: '' }), 4500); }
+
+  countGraph(nodes, edges, reset) {
+    if (reset) { this.kinds.clear(); this.edgeIds.clear(); }
+    nodes.forEach(n => this.kinds.set(n.id, n));
+    edges.forEach(e => this.edgeIds.add(e.id));
+    const counts = { nodes: this.kinds.size, edges: this.edgeIds.size, Person: 0, Place: 0, Thing: 0, Activity: 0, Need: 0, Memory: 0 };
+    this.kinds.forEach(n => { counts[n.kind] = (counts[n.kind] || 0) + 1; });
+    return counts;
+  }
+  pushEvent(kind, text, color) { this.setState(s => ({ events: [{ kind, text, color, at: Date.now() }, ...s.events].slice(0, 3) })); }
+
+  onMsg(m) {
+    const p = m.payload || {}, now = performance.now();
+    switch (m.type) {
+      case 'eeg.trace': if (this.eeg) this.eeg.push(p); break;
+      case 'eeg.psd': if (this.psd) this.psd.push(p); break;
+      case 'bci.scores': this.live.scores = p; break;
+      case 'sys.status': {
+        if (this.psd && p.frequencies) this.psd.setTargets(p.frequencies, p.cancel_idx);
+        const sec = Math.floor(Date.now() / 1000), sel = this.selMarks.has(sec) || this.selMarks.has(sec - 1);
+        this.selMarks.clear();
+        const drops = (p.stimulus_integrity && p.stimulus_integrity.dropped_frames_last_s) || 0;
+        this.setState(s => ({ status: p, integrity: [...s.integrity, { drops, sel }].slice(-60) }));
+        break;
+      }
+      case 'fsm.state': {
+        const keys = Component.STEPS.map(x => x[0]);
+        this.setState(s => {
+          let steps = p.state === 'TRANSCRIBING' ? {} : { ...s.steps };
+          const prevKey = s.fsm;
+          if (steps[prevKey] && steps[prevKey].end == null && prevKey !== p.state) steps[prevKey] = { ...steps[prevKey], end: now };
+          if (keys.includes(p.state) && (!steps[p.state] || steps[p.state].end != null)) steps[p.state] = { start: now };
+          const patch = { fsm: p.state, fsmDetail: p.detail || '', steps };
+          if (p.state === 'TRANSCRIBING') Object.assign(patch, { round: null, spoken: null, learned: [], grounding: [] });
+          if (p.state.startsWith('seed') || (p.detail || '').startsWith('seed:')) patch.seedDetail = p.detail;
+          return patch;
+        });
+        break;
+      }
+      case 'conv.transcript':
+        this.turnT0 = m.ts;
+        this.setState(s => ({ partner: { name: p.partner_name, conf: `${Math.round((p.confidence || 0) * 100)}%` }, transcript: [{ who: p.partner_name || p.speaker, text: p.text, kind: 'partner' }, ...s.transcript].slice(0, 6) }));
+        break;
+      case 'conv.intents':
+        this.setState({ round: { kind: 'intent', trial_id: p.trial_id, labels: p.labels || [], chosen: null } });
+        break;
+      case 'conv.candidates':
+        this.brainDo(b => b.glow(p.grounding || []));
+        if ((p.grounding || []).length) this.pushEvent('GLOW', `${p.grounding.length} grounding facts`, Component.C.accent);
+        this.setState({ round: { kind: 'candidate', trial_id: p.trial_id, labels: p.candidates || [], chosen: null }, grounding: (p.grounding || []).map(id => this.kinds.get(id)).filter(Boolean).map(n => ({ label: n.label, color: Component.KIND[n.kind] })) });
+        break;
+      case 'input.selection': {
+        this.selMarks.add(Math.floor(Date.now() / 1000));
+        this.live.flash = { label: p.label, until: now + 1600 };
+        this.setState(s => (s.round ? { round: { ...s.round, chosen: p.target_idx } } : null));
+        break;
+      }
+      case 'conv.spoken': {
+        const words = String(p.text || '').split(/\s+/).filter(Boolean);
+        this.speak = { start: now, dur: 500 + words.length * 300 };
+        const dt = this.turnT0 ? Math.max(1, m.ts - this.turnT0) : null;
+        const who = (this.kinds.get('user') && this.kinds.get('user').label.split(' ')[0]) || 'User';
+        if (p.voice === 'browser' && window.speechSynthesis) window.speechSynthesis.speak(new SpeechSynthesisUtterance(p.text));
+        this.setState(s => ({
+          spoken: { text: p.text, words, voice: p.voice, cached: p.cached, latency: p.latency_ms },
+          transcript: [{ who, text: p.text, kind: 'user' }, ...s.transcript].slice(0, 6),
+          wpm: dt ? { words: s.wpm.words + words.length, secs: s.wpm.secs + dt } : s.wpm,
+        }));
+        break;
+      }
+      case 'graph.snapshot':
+        this.brainDo(b => b.setSnapshot(p));
+        this.setState({ counts: this.countGraph(p.nodes || [], p.edges || [], true) });
+        break;
+      case 'graph.activate':
+        this.brainDo(b => b.activate(p));
+        if (p.reason !== 'reinforce' || (p.node_ids || []).length) this.pushEvent('PULSE', `${(p.node_ids || []).length} nodes · ${p.reason || 'retrieval'}`, 'oklch(0.85 0.1 200)');
+        break;
+      case 'graph.bloom': {
+        this.brainDo(b => b.bloom(p));
+        const counts = this.countGraph(p.nodes || [], p.edges || [], false);
+        const learning = this.state.view === 'dashboard' && (p.nodes || []).length;
+        if (learning) this.pushEvent('BLOOM', `+${p.nodes.length} learned`, 'oklch(0.85 0.12 95)');
+        this.setState(learning ? { counts, learned: p.nodes.map(n => ({ label: n.label, color: Component.KIND[n.kind] })) } : { counts });
+        break;
+      }
+      case 'analytics.summary':
+        this.setState(s => ({ analytics: p, rhoHist: [...s.rhoHist, p.mean_rho_by_target || []].slice(-60) }));
+        break;
+      case 'privacy.flow':
+        this.setState(s => {
+          const f = s.flows[p.destination] || { count: 0, stages: [], sends: '' };
+          const stages = f.stages.includes(p.stage) ? f.stages : [...f.stages, p.stage];
+          const sends = p.stage === 'stt' ? p.description : (p.stage === 'intents' || !f.sends ? p.description : f.sends);
+          return { flows: { ...s.flows, [p.destination]: { count: f.count + 1, stages, sends } }, flowTotal: s.flowTotal + 1 };
+        });
+        break;
+      case 'privacy.cost': this.setState({ cost: p }); break;
+      case 'spectator.link': this.setSpectator(p); break;
+      default: break;
+    }
+  }
+
+  async setSpectator(p) {
+    this.setState({ spectator: p });
+    if (!p.url) { this.setState({ qr: '' }); return; }
+    if (p.url === this.qrUrl) return;
+    this.qrUrl = p.url;
+    try {
+      const qrcode = (await import('https://esm.sh/qrcode-generator@1.4.4')).default;
+      const q = qrcode(0, 'M'); q.addData(p.url); q.make();
+      this.setState({ qr: q.createDataURL(6, 0) });
+    } catch (e) { console.error('flick: QR generation failed', e); }
+  }
+
+  tick(now) {
+    this.raf = requestAnimationFrame(this.tick);
+    const C = Component.C, st = this.state.status;
+    if (this.eeg) this.eeg.frame(now);
+    const s = this.live.scores;
+    if (s) {
+      const d = this.live.disp;
+      for (let i = 0; i < s.rho.length; i++) d[i] = (d[i] || 0) + (s.rho[i] - (d[i] || 0)) * 0.16;
+      if (this.psd) this.psd.setWinner(s.winner_idx, s.above_threshold);
+      if (this.scoresEl) {
+        this.scoresEl.querySelectorAll('[data-row]').forEach((row, i) => {
+          const win = i === s.winner_idx, hot = win && s.above_threshold;
+          const bar = row.querySelector('[data-bar]'), val = row.querySelector('[data-val]');
+          bar.style.width = `${Math.min(100, (d[i] || 0) * 100).toFixed(1)}%`;
+          bar.style.background = hot ? C.accent : win ? C.mid : C.dim;
+          val.textContent = (d[i] || 0).toFixed(2);
+          val.style.color = hot ? C.accent : C.text2;
+          row.querySelectorAll('[data-pip]').forEach((pip, j) => { pip.style.background = hot && j < s.dwell_count ? C.accent : 'transparent'; });
+        });
+        const chip = this.scoresEl.querySelector('[data-chip]'), mg = this.scoresEl.querySelector('[data-margin]');
+        const dwellN = (st && st.decision && st.decision.dwell_windows) || 3;
+        const f = st && st.frequencies ? `${st.frequencies[s.winner_idx].toFixed(1)} Hz` : `T${s.winner_idx + 1}`;
+        let text = 'IDLE · NOTHING ABOVE THRESHOLD', bg = 'oklch(0.25 0.01 160)', col = C.text2;
+        if (this.live.flash && now < this.live.flash.until) { const lb = this.live.flash.label || f; text = `SELECTED · ${lb.length > 24 ? lb.slice(0, 23) + '…' : lb}`; bg = C.accent; col = 'oklch(0.17 0.03 158)'; }
+        else if (s.above_threshold && s.dwell_count > 0) { text = `DWELL ${s.dwell_count}/${dwellN} · ${f}`; bg = 'oklch(0.87 0.17 158 / 0.18)'; col = C.accent; }
+        else if (s.above_threshold) { text = `ABOVE · MARGIN LOW · ${f}`; bg = 'oklch(0.9 0.16 100 / 0.14)'; col = C.warn; }
+        if (chip.textContent !== text) chip.textContent = text;
+        chip.style.background = bg; chip.style.color = col;
+        mg.textContent = `margin ${s.margin.toFixed(2)}×`;
+      }
+      if (this.tilesEl) this.tilesEl.querySelectorAll('[data-tile]').forEach(tile => {
+        const i = Number(tile.getAttribute('data-tile')), m = tile.querySelector('[data-meter]');
+        if (!m) return;
+        m.style.width = `${Math.min(100, (d[i] || 0) * 100).toFixed(1)}%`;
+        m.style.background = i === s.winner_idx && s.above_threshold ? C.accent : 'oklch(0.55 0.03 160)';
+      });
+    }
+    if (this.psd) {
+      this.psd.frame();
+      if (!this._psdT || now - this._psdT > 250) {
+        this._psdT = now;
+        const r = this.psd.readout(s ? s.winner_idx : -1, !!(s && s.above_threshold)), el = document.querySelector('[data-psd-readout]');
+        if (el && r) el.textContent = `${r.label} · ${r.snr >= 0 ? '+' : ''}${r.snr.toFixed(1)} dB over median`;
+      }
+    }
+    if (this.speak && this.tilesEl) {
+      const t = (now - this.speak.start) / this.speak.dur, words = this.tilesEl.querySelectorAll('[data-word]');
+      const lit = Math.floor(Math.min(1, t) * words.length + 0.001);
+      words.forEach((w, i) => { const c = i < lit ? C.text : 'oklch(0.45 0.012 160)'; if (w.style.color !== c) w.style.color = c; });
+      this.tilesEl.querySelectorAll('[data-wave]').forEach((b, i) => { b.style.height = `${t < 1 ? 4 + Math.abs(Math.sin(now / 90 + i * 1.7)) * 13 * (0.5 + Math.random() * 0.5) : 4}px`; });
+    }
+    const gen = this.tilesEl && this.tilesEl.querySelector('[data-gen-bar]');
+    if (gen) gen.style.left = `${((now / 12) % 130) - 30}%`;
+    if (!this._slow || now - this._slow > 200) {
+      this._slow = now;
+      const clock = document.querySelector('[data-clock]');
+      if (clock) { const sec = Math.floor((now - this.t0) / 1000); clock.textContent = `${String(Math.floor(sec / 60)).padStart(2, '0')}:${String(sec % 60).padStart(2, '0')}`; }
+      document.querySelectorAll('[data-live-dot]').forEach(dot => { dot.style.opacity = String(0.45 + 0.55 * Math.abs(Math.sin(now / 600))); });
+      const act = this.state.steps[this.state.fsm];
+      if (act && act.end == null) { const el = document.querySelector(`[data-step="${this.state.fsm}"]`); if (el) el.textContent = this.fmtMs(now - act.start); }
+    }
+  }
+
+  fmtMs(ms) { return ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(1)} s`; }
+
+  mockDo(fn) { if (this.sock && this.sock.mock) fn(this.sock.mock); }
+
+  renderVals() {
+    const s = this.state, C = Component.C, st = s.status, now = performance.now();
+    const freqs = st && st.frequencies ? st.frequencies : null;
+    const nT = freqs ? freqs.length : 5;
+    const cancelIdx = st && st.cancel_idx != null ? st.cancel_idx : nT - 1;
+    const thr = (st && st.decision && st.decision.rho_threshold) || 0.35;
+    const fLabel = i => (freqs ? `${freqs[i].toFixed(1)} Hz` : `T${i + 1}`);
+    const round = s.round;
+    const tileText = i => {
+      if (i === cancelIdx) return 'Cancel';
+      if (!round) return '—';
+      return round.labels[i < cancelIdx ? i : i - 1] || '—';
+    };
+    const targets = Array.from({ length: nT }, (_, i) => ({ idx: i, label: tileText(i), freq: fLabel(i), labelColor: round && i !== cancelIdx ? C.text : C.muted }));
+
+    const waitStates = ['INTENT_WAIT', 'CANDIDATE_WAIT'];
+    const showChosen = round && round.chosen != null && ['CANDIDATE_GEN', 'SPEAKING'].includes(s.fsm);
+    const body = s.spoken && ['SPEAKING', 'LEARNING'].includes(s.fsm) ? 'speaking'
+      : round && (waitStates.includes(s.fsm) || showChosen) ? 'tiles'
+      : ['TRANSCRIBING', 'GROUNDING', 'INTENT_GEN', 'CANDIDATE_GEN'].includes(s.fsm) ? 'gen' : 'idle';
+    const tiles = [];
+    if (round) {
+      for (let i = 0; i < nT; i++) {
+        const label = tileText(i);
+        if (label === '—' && i !== cancelIdx) continue;
+        const isCancel = i === cancelIdx, chosen = round.chosen === i, others = round.chosen != null && !chosen;
+        const cand = round.kind === 'candidate';
+        tiles.push({
+          idx: i, label, freq: fLabel(i),
+          tag: isCancel ? 'cancel' : cand ? ['short', 'medium', 'long'][i] || '' : 'intent',
+          flex: chosen ? '2.6 1 0' : isCancel ? '0.55 1 0' : others ? '0.8 1 0' : cand ? '1.4 1 0' : '1 1 0',
+          bg: chosen ? 'oklch(0.87 0.17 158 / 0.1)' : C.panel2,
+          border: chosen ? C.accent : C.line2,
+          opacity: others ? '0.4' : '1',
+          size: chosen ? (cand ? '22px' : '26px') : isCancel ? '15px' : cand ? '16px' : '20px',
+          weight: chosen ? '600' : '500',
+          color: isCancel ? C.text2 : C.text,
+        });
+      }
+    }
+    const provider = st && st.providers && st.providers.llm ? st.providers.llm.name : 'LLM';
+    const genTitle = { TRANSCRIBING: 'Transcribing the partner', GROUNDING: 'Identifying the partner, retrieving memories', INTENT_GEN: 'Writing four intents', CANDIDATE_GEN: 'Writing three sentences from memory' }[s.fsm] || '';
+
+    const pipeline = Component.STEPS.map(([key, label]) => {
+      const t = s.steps[key], active = s.fsm === key, done = t && t.end != null;
+      return {
+        key, label,
+        time: done ? this.fmtMs(t.end - t.start) : active ? '…' : '—',
+        bg: active ? 'oklch(0.87 0.17 158 / 0.14)' : 'transparent',
+        border: active ? 'oklch(0.87 0.17 158 / 0.7)' : done ? C.line2 : C.line,
+        color: active ? C.accent : done ? C.text2 : C.muted,
+        timeColor: active ? C.accent : done ? C.text : 'oklch(0.45 0.012 160)',
+      };
+    });
+
+    const voiceMap = {
+      cache: ['Cache · cloned voice', 'no network'], elevenlabs: ['ElevenLabs · cloned voice', 'streaming'],
+      piper: ['Piper · generic voice, not the clone', 'local'], browser: ['Browser speech · generic voice', 'local'],
+    };
+    const vm = s.spoken ? voiceMap[s.spoken.voice] || [s.spoken.voice, ''] : ['', ''];
+    const voice = { label: vm[0], meta: s.spoken ? `${vm[1]} · ${s.spoken.latency} ms` : '' };
+
+    const pv = (st && st.providers) || {};
+    const providers = [['LLM', 'llm'], ['STT', 'stt'], ['TTS', 'tts']].map(([slot, k]) => ({ slot, name: pv[k] ? pv[k].name : '—', color: pv[k] ? (pv[k].healthy ? C.accent : C.danger) : C.muted }));
+    const integ = (st && st.stimulus_integrity) || null;
+    const drops = integ ? integ.dropped_frames_last_s : null;
+    const stim = {
+      profile: st ? st.profile : '—',
+      hz: st ? `${Number(st.measured_refresh_hz).toFixed(1)} Hz` : '— Hz',
+      drops: drops == null ? '— drops' : `${drops} drop${drops === 1 ? '' : 's'}`,
+      dropColor: drops > 5 ? C.danger : drops > 0 ? C.warn : C.text,
+    };
+
+    const an = s.analytics;
+    const hasCued = !!(an && an.cued_trials > 0 && an.accuracy_pct != null);
+    const hist = s.rhoHist;
+    const sparks = Array.from({ length: nT }, (_, i) => {
+      const vals = hist.map(h => h[i] || 0);
+      const pts = vals.length > 1 ? vals.map((v, j) => `${(j / (vals.length - 1) * 100).toFixed(1)},${(32 - Math.min(1, v / 0.7) * 30 - 1).toFixed(1)}`).join(' ') : '0,31 100,31';
+      return { freq: fLabel(i), last: vals.length ? vals[vals.length - 1].toFixed(2) : '—', points: pts, stroke: i === cancelIdx ? C.muted : C.accent };
+    });
+    const wpm = s.wpm.secs > 0 ? s.wpm.words / (s.wpm.secs / 60) : null;
+    const wpmRows = [
+      { label: 'Flick, this session', value: wpm ? wpm.toFixed(0) : '—', pct: `${Math.min(100, (wpm || 0) / 150 * 100).toFixed(1)}%`, color: C.accent, labelColor: C.text },
+      { label: 'Letter speller', value: '~8', pct: `${(8 / 150 * 100).toFixed(1)}%`, color: 'oklch(0.55 0.02 160)', labelColor: C.text2 },
+      { label: 'Speech', value: '~150', pct: '100%', color: 'oklch(0.55 0.02 160)', labelColor: C.text2 },
+    ];
+    const cells = s.integrity.slice(-60);
+    const integrity = Array.from({ length: 60 }, (_, i) => {
+      const c = cells[i - (60 - cells.length)];
+      if (!c) return { bg: 'oklch(0.21 0.008 160)', mark: 'transparent' };
+      return { bg: c.drops > 5 ? C.danger : c.drops > 0 ? 'oklch(0.75 0.14 85)' : 'oklch(0.42 0.08 160)', mark: c.sel ? C.accent : 'transparent' };
+    });
+    const totalDrops = cells.reduce((a, c) => a + c.drops, 0);
+
+    const flows = Object.entries(s.flows).sort((a, b) => (a[0] === 'Spectator relay') - (b[0] === 'Spectator relay') || b[1].count - a[1].count);
+    const ledger = flows.map(([dest, f]) => ({ dest, count: `${f.count} ${dest === 'Spectator relay' ? 'events' : f.count === 1 ? 'call' : 'calls'}`, what: f.stages.map(x => Component.STAGE[x] || x).join(', '), sends: f.sends }));
+    const localMode = !!(st && st.local_mode);
+    const person = (this.kinds.get('user') && this.kinds.get('user').label.split(' ')[0]) || 'the user';
+
+    const sp = s.spectator;
+    const narrow = s.narrow;
+    const disp = { analytics: !narrow || s.tab === 'analytics' ? 'flex' : 'none', privacy: !narrow || s.tab === 'privacy' ? 'flex' : 'none', spectator: !narrow || s.tab === 'spectator' ? 'flex' : 'none' };
+    const tabBg = { analytics: s.tab === 'analytics' ? 'oklch(0.26 0.012 160)' : 'transparent', privacy: s.tab === 'privacy' ? 'oklch(0.26 0.012 160)' : 'transparent', spectator: s.tab === 'spectator' ? 'oklch(0.26 0.012 160)' : 'transparent' };
+    const seedIdx = Component.SEED_STEPS.findIndex(x => x[0] === s.seedDetail);
+    const seedSteps = Component.SEED_STEPS.map(([key, label, meta], i) => {
+      const done = s.seed === 'done' || (s.seed === 'running' && seedIdx > i);
+      const active = s.seed === 'running' && seedIdx === i;
+      const m = key === 'seed:stream' && (active || done) ? `${s.counts.nodes} nodes · ${s.counts.edges} edges` : meta;
+      return { label, meta: m, color: active ? C.accent : done ? C.text : C.muted, dot: active || done ? C.accent : C.line2, fill: done ? C.accent : 'transparent' };
+    });
+    const events = s.events.map(e => ({ ...e, opacity: String(Math.max(0.35, 1 - (Date.now() - e.at) / 14000)) }));
+    const brainHintText = !s.brainReady ? 'Loading 3D renderer…' : s.view === 'onboarding' ? 'The memory graph grows here' : 'No memories yet';
+    const last = s.transcript.find(t => t.kind === 'user');
+
+    return {
+      connLive: s.conn === 'live', connMock: s.conn === 'mock', connRetry: s.conn === 'reconnecting' || s.conn === 'connecting',
+      connRetryLabel: s.conn === 'connecting' ? 'CONNECTING' : `RECONNECTING · ${(s.retryMs / 1000).toFixed(2)} s`,
+      stim, sensorLabel: st ? `${st.source} · ${st.connected ? '8 ch' : 'disconnected'}` : '—',
+      providers, telemetryLabel: st ? `${st.telemetry_dropped} dropped` : '—',
+      localMode, hasBadge: !!(st && st.input_badge), inputBadge: st ? st.input_badge : '',
+      topCols: narrow ? 'minmax(0, 1fr)' : 'minmax(0, 3fr) minmax(380px, 2fr)',
+      topHeight: narrow ? 'auto' : s.view === 'dashboard' ? 'clamp(500px, 58vh, 740px)' : 'calc(100vh - 76px)',
+      brainHeight: narrow ? '440px' : 'auto',
+      brainRef: this.brainRef, counts: s.counts, events, brainHint: !s.brainReady || s.counts.nodes === 0, brainHintText,
+      showSim: s.conn === 'mock' && s.view === 'dashboard',
+      toggleAutopilot: () => { const on = !s.autopilot; this.mockDo(m => m.setAutopilot(on)); this.setState({ autopilot: on }); },
+      autopilotLabel: s.autopilot ? 'autopilot on' : 'autopilot off', autopilotBg: s.autopilot ? 'oklch(0.87 0.17 158 / 0.18)' : 'oklch(0.2 0.009 160)',
+      gazeButtons: Array.from({ length: nT }, (_, i) => ({ label: i === cancelIdx ? '✕' : String(i + 1), title: `Look at ${fLabel(i)} (sends client.key_press ${i + 1})`, onClick: () => this.sock && this.sock.send({ type: 'client.key_press', ts: Date.now() / 1000, key: String(i + 1) }) })),
+      lookAway: () => this.mockDo(m => m.attend(null)),
+      testPulse: () => this.mockDo(m => m.testPulse()),
+      testBloom: () => this.mockDo(m => m.testBloom()),
+      nextTurn: () => this.mockDo(m => m.nextTurn()),
+      isBoot: s.view === 'boot', isOnboarding: s.view === 'onboarding', isDashboard: s.view === 'dashboard',
+      name: s.name, bio: s.bio,
+      onName: e => this.setState({ name: e.target.value }), onBio: e => this.setState({ bio: e.target.value }),
+      seedIdle: s.seed === 'idle' || s.seed === 'error', seedRunning: s.seed === 'running', seedDone: s.seed === 'done',
+      seed: async () => {
+        this.setState({ seed: 'running', seedDetail: '' });
+        try { await this.sock.api('POST', '/api/onboarding/seed', { bio: s.bio, name: s.name }); this.setState({ seed: 'done' }); }
+        catch (e) { console.error('flick: seed failed', e); this.setState({ seed: 'error' }); this.toast(`Seeding failed: ${e.message}`); }
+      },
+      goLive: () => this.setState({ view: 'dashboard' }),
+      seedSteps,
+      hasPartner: !!s.partner, partner: s.partner || { name: '', conf: '' },
+      transcript: s.transcript.slice(0, 4).map((t, i) => ({ who: t.who, text: t.text, color: t.kind === 'user' ? C.accent : 'oklch(0.80 0.13 25)', size: i === 0 ? '20px' : '14px', opacity: String(i === 0 ? 1 : Math.max(0.4, 0.8 - i * 0.15)) })),
+      noTranscript: s.transcript.length === 0,
+      scoresRef: this.scoresRef, targets, thresholdPct: `${(thr * 100).toFixed(1)}%`, thresholdLabel: thr.toFixed(2),
+      psdRef: this.psdRef, wfRef: this.wfRef, eegRef: this.eegRef,
+      eegMeta: st ? `${st.source} · 250 Hz · post-filter` : '250 Hz',
+      channels: Component.CHANNELS.map((c, k) => ({ name: c, color: k < 3 ? 'oklch(0.87 0.12 158)' : C.text2 })),
+      pipeline, tilesRef: this.tilesRef,
+      bodyIdle: body === 'idle', bodyGen: body === 'gen', bodyTiles: body === 'tiles', bodySpeaking: body === 'speaking',
+      idleTitle: s.fsm === 'IDLE' || s.fsm === 'UNSEEDED' ? 'Listening for the partner' : 'Waiting',
+      idleSub: s.fsmDetail && s.fsmDetail !== 'listening' ? s.fsmDetail : last ? `Last said: “${last.text}”` : 'Tiles stay dark until someone speaks. Nothing can be selected while they are dark.',
+      genTitle, genSub: s.fsm === 'INTENT_GEN' || s.fsm === 'CANDIDATE_GEN' ? `${s.fsmDetail || provider}` : s.fsmDetail,
+      tiles, speakLabel: s.fsm === 'LEARNING' ? 'SPOKEN · LEARNING' : 'SPEAKING', voice,
+      spokenWords: s.spoken ? s.spoken.words.map(text => ({ text })) : [],
+      hasLearned: s.learned.length > 0, learned: s.learned,
+      hasGrounding: s.grounding.length > 0 && (body === 'tiles' || body === 'speaking'), grounding: s.grounding,
+      prompt: s.prompt, onPrompt: e => this.setState({ prompt: e.target.value }),
+      sendPrompt: () => this.sendPrompt(), promptKey: e => { if (e.key === 'Enter') this.sendPrompt(); },
+      narrow, tabBg, disp, bottomCols: narrow ? 'minmax(0, 1fr)' : 'repeat(3, minmax(0, 1fr))',
+      tabAnalytics: () => this.setState({ tab: 'analytics' }), tabPrivacy: () => this.setState({ tab: 'privacy' }), tabSpectator: () => this.setState({ tab: 'spectator' }),
+      an: {
+        accuracy: an && an.accuracy_pct != null ? `${an.accuracy_pct.toFixed(0)}%` : '—',
+        itr: an && an.itr_bits_per_min != null ? an.itr_bits_per_min.toFixed(1) : '—',
+        selections: an ? String(an.selections_total) : '—',
+        latency: an && an.selections_total ? `${an.mean_selection_latency_s.toFixed(2)} s` : '—',
+        drift: an ? `drift ${an.drift >= 0 ? '+' : ''}${an.drift.toFixed(3)}` : '',
+      },
+      hasCued, noCued: !hasCued,
+      runCued: async () => { try { await this.sock.api('POST', '/api/calibration/start'); } catch (e) { this.toast(e.message); } },
+      sparks, wpmRows, integrity, integrityMeta: `${totalDrops} dropped frames`,
+      costLine: s.cost ? `turn $${s.cost.turn_usd.toFixed(4)} · session $${s.cost.session_usd.toFixed(4)}` : localMode ? '$0 · local' : 'no paid calls yet',
+      flowTotal: String(s.flowTotal), ledger, noFlows: ledger.length === 0,
+      localModeStr: localMode ? 'true' : 'false', localBorder: localMode ? 'oklch(0.87 0.17 158 / 0.6)' : C.line,
+      sw: { bg: localMode ? C.accent : 'oklch(0.32 0.012 160)', knob: localMode ? 'oklch(0.17 0.03 158)' : 'oklch(0.85 0.01 160)', justify: localMode ? 'flex-end' : 'flex-start' },
+      localCopy: localMode
+        ? `On. LLM runs on a local endpoint, then static. STT is faster-whisper. TTS is Piper: a generic voice, not ${person}'s clone. Spectator relay disconnected.`
+        : `Off. Cloud chain: Gemini, Deepgram, ElevenLabs with ${person}'s cloned voice. Switch on to keep talking with the network unplugged.`,
+      toggleLocal: async () => { try { await this.sock.api('POST', '/api/privacy/local_mode', { enabled: !localMode }); } catch (e) { this.toast(`Local Mode failed: ${e.message}`); } },
+      noPurge: !s.purge, hasPurge: !!s.purge,
+      purgeQuestion: s.purge ? `Delete ${s.purge === 'all' ? 'the graph, telemetry and audio cache' : s.purge === 'graph' ? 'the memory graph' : 'session telemetry'}? This cannot be undone.` : '',
+      purgeGraph: () => this.setState({ purge: 'graph' }), purgeTelemetry: () => this.setState({ purge: 'telemetry' }), purgeAll: () => this.setState({ purge: 'all' }),
+      purgeCancel: () => this.setState({ purge: null }),
+      purgeConfirm: async () => {
+        const scope = s.purge;
+        this.setState({ purge: null });
+        try {
+          await this.sock.api('POST', '/api/privacy/purge', { scope });
+          if (scope !== 'graph') this.setState({ analytics: null, rhoHist: [], integrity: [], wpm: { words: 0, secs: 0 }, cost: null });
+          if (scope !== 'telemetry') this.setState({ view: 'onboarding', seed: 'idle', seedDetail: '', round: null, spoken: null, transcript: [], partner: null, events: [] });
+          this.toast(`Purged: ${scope}`);
+        } catch (e) { this.toast(`Purge failed: ${e.message}`); }
+      },
+      viewersLabel: sp ? (sp.url ? `${sp.connected_viewers} watching` : 'relay off') : '—',
+      viewersColor: sp && sp.url ? C.accent : C.muted,
+      hasQr: !!(sp && sp.url && s.qr), qr: s.qr, qrBg: sp && sp.url ? '#ffffff' : 'oklch(0.22 0.01 160)',
+      spectatorTitle: sp && sp.url ? 'Scan to follow along on your phone' : localMode ? 'Relay disconnected in Local Mode' : 'Waiting for the relay link',
+      hasSpectatorUrl: !!(sp && sp.url), spectatorUrl: sp && sp.url ? sp.url : '',
+      hasNote: !!s.note, note: s.note,
+    };
+  }
+
+  async sendPrompt() {
+    const text = this.state.prompt.trim();
+    if (!text || !this.sock) return;
+    this.setState({ prompt: '' });
+    try { await this.sock.api('POST', '/api/utterance', { text }); } catch (e) { this.toast(`Scripted prompt failed: ${e.message}`); }
+  }
+}
+</script>
+</body>
+</html>
