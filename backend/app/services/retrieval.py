@@ -216,7 +216,7 @@ class RetrievalService:
     @staticmethod
     def _render_context(nodes: list[NodeRef]) -> str:
         """Section 11: "Context is rendered one fact per line."""
-        lines = [f"- {n.fact}" for n in nodes if n.fact]
+        lines = [f"- {' '.join(n.fact.split())}" for n in nodes if n.fact]
         return "\n".join(lines)
 
 

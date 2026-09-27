@@ -20,6 +20,7 @@ from shared.schemas import (
     GraphEdge,
     GraphNode,
     KeyPress,
+    PlaybackComplete,
     PsdFrame,
     RequestSnapshot,
     Selection,
@@ -36,6 +37,9 @@ from shared.schemas import (
 # One valid set of kwargs per model in section 6. Every model here
 # must exist with exactly these field names and types.
 VALID_KWARGS: dict[type[BaseModel], dict] = {
+    PlaybackComplete: dict(
+        type="client.playback_complete", ts=1.0, playback_id="reply-1", outcome="completed"
+    ),
     Selection: dict(
         type="input.selection",
         ts=1.0,
@@ -186,6 +190,7 @@ BUS_MESSAGE_MODELS = [
 CLIENT_MESSAGE_MODELS = [
     KeyPress,
     RequestSnapshot,
+    PlaybackComplete,
 ]
 
 BUS_ADAPTER: TypeAdapter[BusMessage] = TypeAdapter(BusMessage)

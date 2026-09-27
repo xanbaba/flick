@@ -14,7 +14,9 @@ Rules that apply to every node:
 - Every edge's "kind" is one of: KNOWS, LIKES, DISLIKES, NEEDS, LOCATED_AT,
   DOES, INVOLVES, RELATES_TO. "source" and "target" reference node ids from
   "nodes" (use the node's "name" as an id-like reference if no id is given).
-- The person themselves is always "user" and needs no separate node entry.
+- The person themselves is always a Person with id "user" and relationship
+  "self". Include their node. Include only facts supported by the biography;
+  fewer well-supported nodes are better than invented details to meet a count.
 
 Return strict JSON, nothing else:
 {"nodes": [{"id": "...", "kind": "...", "name": "...", "notes": "..."}],

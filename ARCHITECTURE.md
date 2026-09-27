@@ -416,8 +416,8 @@ retrieval:
 generation:
   n_intents: 4
   n_candidates: 3
-  max_tokens: 400
-  timeout_s: 6.0
+  max_tokens: 2048
+  timeout_s: 12.0
 
 extraction:
   enabled: true
@@ -625,6 +625,18 @@ class StimulusIntegrity(BaseModel):
 
 Envelope `{"type": ..., "ts": ..., "payload": {...}}`.
 
+The dashboard acknowledges a reply after audio ends or stops with
+`{type: "client.playback_complete", ts, playback_id, outcome}`. The outcome is
+`completed` or `failed`. Each reply has a unique playback ID; acknowledgments
+must match both that ID and a connection which received the reply. The backend
+waits for every receiving dashboard before rearming the microphone. The
+playback deadline uses the existing conversation wait timeout (30 seconds).
+The browser stops playback on that deadline or disconnection. Missing
+acknowledgments keep the microphone gated and produce an informative status.
+That conservative gate remains latched until backend restart; manual prompts
+remain available. A reported playback failure is safe to rearm because the
+browser has already stopped its output.
+
 | `type` | Rate | Payload |
 |---|---|---|
 | `eeg.trace` | 4 Hz | `{channels, data, fs}` |
@@ -634,7 +646,7 @@ Envelope `{"type": ..., "ts": ..., "payload": {...}}`.
 | `conv.transcript` | event | `{speaker, text, partner_id, partner_name, confidence}` |
 | `conv.intents` | event | `{trial_id, labels}` |
 | `conv.candidates` | event | `{trial_id, candidates, grounding}` |
-| `conv.spoken` | event | `{text, voice, cached, latency_ms}` |
+| `conv.spoken` | event | `{text, voice, cached, latency_ms, audio_b64?, playback_id?, playback_timeout_s?}` |
 | `graph.snapshot` | on connect | `{nodes, edges}` |
 | `graph.activate` | event | `{node_ids, edge_ids, reason}` |
 | `graph.bloom` | event | `{nodes, edges}` |
@@ -644,6 +656,10 @@ Envelope `{"type": ..., "ts": ..., "payload": {...}}`.
 | `privacy.flow` | event | `{stage, destination, bytes, description}` |
 | `privacy.cost` | event | `{turn_id, items, turn_usd, session_usd}` |
 | `spectator.link` | on connect | `{url, connected_viewers}` |
+
+`sys.status` also supplies configured decision thresholds and the input's
+Cancel index. The score panel uses these values and renders missing scores or
+unmeasured frequencies as unavailable rather than as measured zeroes.
 
 ```python
 class GraphNode(BaseModel):
@@ -720,6 +736,11 @@ class InputSource(ABC):
 ```
 
 The orchestrator (§14) holds exactly one `InputSource`. Swapping adapters is a config change or a `POST /api/input`; no other code changes.
+
+Runtime switching is accepted only while idle or unseeded. It transfers the
+selection listener and stimulus publisher to the replacement adapter; failed
+startup restores the previous adapter. Status is broadcast immediately so the
+dashboard badge follows the active input. Unsupported adapters return HTTP 422.
 
 ### 7.2 `keyboard` — the development adapter
 
@@ -1063,7 +1084,7 @@ Context is rendered one fact per line:
 
 ## 12. Generation
 
-All calls go through `LLMProvider.complete(system, user, json_mode=...)` with a 6 s timeout and one retry on malformed JSON using a repair prompt. Second failure falls to the static provider.
+All calls go through `LLMProvider.complete(system, user, json_mode=...)` with the configured generation token allowance and timeout. The generation stage has a 12 s deadline, including one retry on malformed JSON using a repair prompt. The 2048-token allowance leaves room for thinking and the complete JSON response; Gemini 3 uses low thinking and Gemini 2.5 Flash disables thinking. A second failure or the stage deadline falls to the offline placeholder.
 
 ### 12.1 Intent labels
 
@@ -1125,6 +1146,11 @@ CHOSEN INTENT: "{intent}"
 ```
 
 `grounding` drives the node-highlight animation. Ids not present in the supplied facts are dropped silently rather than failing the turn.
+
+Cancel retains the last physical target in both conversation rounds (key 5 in
+the five-target configuration). With three candidates, the fourth slot is
+empty and disabled; adapters ignore it without consuming the active trial.
+The four-target configuration uses three semantic slots followed by Cancel.
 
 ### 12.3 Partner identification
 
@@ -1208,6 +1234,30 @@ Served at `/` when `GET /api/onboarding/status` reports `seeded: false`.
 5. **Stream `graph.bloom` in batches of ~10 nodes at 150 ms intervals**, so the dashboard shows the brain *growing* rather than appearing
 
 That streaming detail is worth the twenty minutes. A graph that materialises instantly looks like a fixture; a graph that grows looks like the system learning, and it is the same data either way.
+
+The backend owns one persistent graph for the application lifetime. Graph and
+embedding operations run serially on a dedicated worker; provider calls remain
+asynchronous. On restart, the persisted `user` Person determines onboarding
+status and the speaker name. REST and WebSocket snapshots use that same graph.
+
+Onboarding explicitly creates the `user` Person from the submitted name and
+commits validated nodes and edges atomically before streaming bloom batches.
+The 150-300 node target never justifies inventing facts. A valid first pass can
+be used when expansion fails. Each pass has one repair within the configured
+generation deadline, retaining the onboarding allowance of 4000 tokens.
+
+The bundled fixture is an offline fallback **only for the unchanged demo name
+and biography** (ignoring whitespace). Custom-biography generation failure
+returns a retryable HTTP 503 and leaves the graph unchanged. Concurrent seeding
+or reseeding an existing persona returns HTTP 409; replacement is not implicit.
+
+Both conversation rounds retrieve facts; candidate prompts include their node
+IDs. Committed learning completes before the next utterance is accepted, and
+updated snapshots expose reinforcement alongside bloom events for new memories.
+
+Dashboard reconnection also restores the active intent or candidate choices,
+their existing trial ID and candidate grounding, followed by the current FSM
+state. It does not replay spoken audio or create a new trial.
 
 Fixture persona (`data/fixtures/persona_marcus.json`):
 
@@ -1318,7 +1368,7 @@ class EmbeddingProvider(ABC):
     def embed(self, texts: list[str]) -> np.ndarray: ...
 ```
 
-`registry.py` builds a `FallbackChain` per slot from env vars. Every provider is lazily constructed on first use and wrapped in a circuit breaker: three consecutive failures marks it unhealthy for 30 s and the chain skips it. Health is reported in `sys.status`.
+`registry.py` builds a `FallbackChain` per slot from env vars. Every provider is lazily constructed on first use and wrapped in a circuit breaker: three consecutive failures marks it unhealthy for 30 s and the chain skips it. An explicit provider rate-limit response starts cooldown immediately, for at least 30 s or the provider's retry delay if longer; a JSON repair must not immediately repeat a rate-limited request. Health is reported in `sys.status`.
 
 The last link in every chain is local, offline and never fails. That is what makes SW-13 real: the backend boots and serves a complete turn with no API keys, so frontend and graph work proceed while credentials are being sorted out.
 
@@ -1542,7 +1592,7 @@ Cuts 2, 4 and 5 forfeit a sponsor track and cost the core demo nothing. Cuts 6�
 | Alpha false-triggers | Selections fire with eyes closed | Confirm no target at 10.0 Hz on `hi`; raise `margin_ratio` to 1.25 |
 | Telemetry queue saturating | Non-zero drop counter | Raise `eeg_downsample`. **Never raise `queue_maxsize`** — that trades a dropped row for a stalled pipeline. |
 | TimescaleDB unreachable | Consumer logs once per 30 s | Nothing else changes; telemetry is best-effort by design |
-| LLM timeout | 6 s elapsed | Chain to the next provider, then static. The turn always completes. |
+| LLM timeout | `generation.timeout_s` elapsed | Use the offline placeholder at the stage deadline. The turn always completes. |
 | STT garbage | Confidence < 0.5 or < 2 words | Discard; stay IDLE. Operator can use `POST /api/utterance`. |
 | ElevenLabs down | HTTP error | Cache → Piper → browser. Never silent. |
 | Network dies entirely | Provider dots red | Cached audio + static LLM keep a scripted demo running |

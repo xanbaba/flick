@@ -44,6 +44,7 @@ from backend.providers.embed_minilm import MiniLmEmbeddingProvider
 from backend.providers.llm_gemini import GeminiLLMProvider
 from backend.providers.llm_openai_compat import OpenAICompatLLMProvider
 from backend.providers.llm_static import StaticLLMProvider
+from backend.providers.rate_limits import RateLimitError
 from backend.providers.stt_deepgram import DeepgramSTTProvider
 from backend.providers.stt_faster_whisper import FasterWhisperSTTProvider
 from backend.providers.tts_elevenlabs import ElevenLabsTTSProvider
@@ -81,6 +82,12 @@ class CircuitBreaker:
         self._consecutive_failures += 1
         if self._consecutive_failures >= self._failure_threshold:
             self._unhealthy_until = time.monotonic() + self._cooldown_s
+
+    def record_rate_limit(self, retry_after_s: float | None) -> None:
+        self._unhealthy_until = max(
+            self._unhealthy_until,
+            time.monotonic() + max(self._cooldown_s, retry_after_s or 0.0),
+        )
 
 
 class ManualSTTProvider(STTProvider):
@@ -150,6 +157,16 @@ class _FallbackChain(Generic[T]):
                 continue
             try:
                 result = await self._method(link)(*args, **kwargs)
+            except RateLimitError as exc:
+                breaker.record_rate_limit(exc.retry_after_s)
+                last_exc = exc
+                logger.warning(
+                    "provider.rate_limited",
+                    provider=link.name,
+                    retry_after_s=exc.retry_after_s,
+                    quota_ids=exc.quota_ids,
+                )
+                continue
             except Exception as exc:
                 breaker.record_failure()
                 last_exc = exc

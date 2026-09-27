@@ -16,12 +16,15 @@ trial_id does not match the current one is discarded.
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import time
 import uuid
 from collections.abc import Awaitable, Callable
 
 from backend.app.services.cost import CostTracker
+from backend.app.services.generation import GenerationService
+from backend.app.services.graph import EdgeRef, GraphService
 from backend.app.services.interfaces import (
     ExtractionServiceProtocol,
     GenerationServiceProtocol,
@@ -32,7 +35,9 @@ from backend.app.services.interfaces import (
 )
 from backend.app.services.speech import SpeechService
 from backend.app.services.voice import VoiceService
+from backend.app.services.worker import MemoryWorker, run_memory
 from backend.providers.base import Transcript
+from backend.providers.llm_static import StaticLLMProvider
 from backend.providers.registry import get_llm_provider
 from inputs.base import InputSource
 from shared.bus import Publisher
@@ -66,6 +71,10 @@ NO_SELECTION_MESSAGE = "No selection — listening again"
 Broadcast = Callable[[str, dict[str, object]], Awaitable[None]]
 
 
+class SeedConflictError(RuntimeError):
+    """A persona is already seeded or another seed request is running."""
+
+
 class Orchestrator:
     def __init__(
         self,
@@ -84,7 +93,14 @@ class Orchestrator:
         speller: SpellerServiceProtocol | None = None,
         wait_timeout_s: float = 30.0,
         stim_address: str | None = None,
+        graph: GraphService | None = None,
+        worker: MemoryWorker | None = None,
+        playback: Callable[[dict[str, object], float], Awaitable[str]] | None = None,
     ) -> None:
+        self.graph = graph
+        self.worker = worker
+        self._playback = playback
+        self._playback_unconfirmed = False
         self.input = input_source
         self._broadcast = broadcast
         self.voice = voice
@@ -109,62 +125,124 @@ class Orchestrator:
         self._intent = ""
         self._turn_id = ""
         self._selection_future: asyncio.Future[Selection] | None = None
-        self._tasks: list[asyncio.Task[None]] = []
+        self._selection_task: asyncio.Task[None] | None = None
+        self._grounding_ids: list[str] = []
         self._turn_lock = asyncio.Lock()
         self._stim: Publisher | None = None
         self._seeded = False
+        self._user_name = ""
+        self._context_node_ids: list[str] = []
+        self._context_edges: list[EdgeRef] = []
+        self._partner_id: str | None = None
+        self._seed_lock = asyncio.Lock()
 
     async def start(self) -> None:
-        await self.input.start()
+        await self._start_input()
         await self.speech.start()
         self.speech.gate(True)
-        if self._stim_address is not None:
-            try:
-                self._stim = Publisher(self._stim_address)
-            except Exception as exc:
-                logger.warning("orchestrator.stim_bind_failed", error=str(exc))
-                self._stim = None
-        if self.onboarding is not None and self.onboarding.status().get("seeded"):
-            self._seeded = True
+        status = await self.onboarding_status()
+        if status["seeded"]:
             await self._transition(IDLE, "graph already seeded")
             self.speech.gate(False)
         else:
             await self._transition(UNSEEDED, "awaiting onboarding")
-        self._tasks.append(asyncio.create_task(self._selection_loop()))
 
-    async def stop(self) -> None:
-        for task in self._tasks:
-            task.cancel()
-        if self._tasks:
-            await asyncio.gather(*self._tasks, return_exceptions=True)
-        self._tasks.clear()
+    async def _start_input(self) -> None:
+        await self.input.start()
+        if self.input.name == "keyboard" and self._stim_address is not None:
+            self._stim = Publisher(self._stim_address)
+        self._selection_task = asyncio.create_task(self._selection_loop())
+
+    async def _stop_input(self) -> None:
+        if self._selection_task is not None:
+            self._selection_task.cancel()
+            await asyncio.gather(self._selection_task, return_exceptions=True)
+            self._selection_task = None
         await self.input.stop()
-        await self.speech.stop()
         if self._stim is not None:
             self._stim.close()
             self._stim = None
 
-    async def seed(self, bio: str, name: str) -> dict[str, object]:
-        if self.onboarding is not None:
-            result = await self.onboarding.seed(bio, name)
-            payload: dict[str, object] = {
-                "seeded": True,
-                "node_count": result.node_count,
-            }
-        else:
-            # No onboarding service yet: the turn still has to be able
-            # to leave UNSEEDED (acceptance test A6). Nothing is written
-            # to a graph that does not exist.
-            payload = {"seeded": True, "node_count": 0}
-        self._seeded = True
-        await self._transition(IDLE, f"seeded as {name}")
-        self.speech.gate(False)
-        return payload
+    async def swap_input(self, replacement: InputSource) -> None:
+        """Transfer the selection listener and stimulus socket, rolling back on failure."""
+        if self.state not in (IDLE, UNSEEDED) or self._turn_lock.locked():
+            raise ValueError("Cannot switch input during a conversation turn")
+        async with self._turn_lock:
+            previous = self.input
+            await self._stop_input()
+            self.input = replacement
+            try:
+                await self._start_input()
+            except Exception:
+                await self._stop_input()
+                self.input = previous
+                await self._start_input()
+                raise
 
-    def onboarding_status(self) -> dict[str, object]:
-        if self.onboarding is not None:
-            return dict(self.onboarding.status())
-        return {"seeded": self._seeded, "node_count": 0}
+    async def stop(self) -> None:
+        await self._stop_input()
+        await self.speech.stop()
+
+    async def seed(self, bio: str, name: str) -> dict[str, object]:
+        if self._seed_lock.locked():
+            raise SeedConflictError("Biography seeding is already in progress")
+        async with self._seed_lock:
+            if (await self.onboarding_status())["seeded"]:
+                raise SeedConflictError("A persona already exists; reseeding is not supported")
+            try:
+                if self.onboarding is not None:
+                    async for batch in self.onboarding.seed(bio, name):
+                        await self._broadcast("graph.bloom", batch.model_dump())
+                else:
+                    # Standalone orchestration tests may omit the knowledge layer.
+                    self._seeded = True
+                    self._user_name = name
+            finally:
+                status = await self.onboarding_status()
+                if status["seeded"]:
+                    await self._transition(IDLE, f"seeded as {self._user_name}")
+                    self.speech.gate(False)
+            return status
+
+    async def onboarding_status(self) -> dict[str, object]:
+        if self.graph is None:
+            return {"seeded": self._seeded, "node_count": 0}
+        people = await run_memory(self.worker, self.graph.people)
+        user = next((person for person in people if person.id == "user"), None)
+        self._seeded = user is not None
+        self._user_name = user.name if user is not None else ""
+        return {
+            "seeded": self._seeded,
+            "node_count": await run_memory(self.worker, self.graph.node_count),
+        }
+
+    async def snapshot(self) -> dict[str, object]:
+        if self.graph is None:
+            return {"nodes": [], "edges": []}
+        nodes, edges = await run_memory(self.worker, self.graph.snapshot)
+        return {
+            "nodes": [node.model_dump() for node in nodes],
+            "edges": [edge.model_dump() for edge in edges],
+        }
+
+    def connection_events(self) -> list[tuple[str, dict[str, object]]]:
+        """Restore the current choices without starting a new selection trial."""
+        events: list[tuple[str, dict[str, object]]] = []
+        if self.state == INTENT_WAIT:
+            events.append(("conv.intents", {"trial_id": self.trial_id, "labels": self._labels}))
+        elif self.state == CANDIDATE_WAIT:
+            events.append(
+                (
+                    "conv.candidates",
+                    {
+                        "trial_id": self.trial_id,
+                        "candidates": self._labels,
+                        "grounding": self._grounding_ids,
+                    },
+                )
+            )
+        events.append(("fsm.state", {"state": self.state, "detail": "connected"}))
+        return events
 
     async def submit_utterance(self, text: str) -> None:
         """Run a turn until it is waiting on a selection, or has returned to IDLE."""
@@ -172,6 +250,8 @@ class Orchestrator:
             logger.info("orchestrator.utterance_dropped", state=self.state)
             return
         async with self._turn_lock:
+            if self.state != IDLE:
+                return
             await self._run_until_waiting(text)
 
     async def _selection_loop(self) -> None:
@@ -192,6 +272,9 @@ class Orchestrator:
         label = ""
         if 0 <= selection.target_idx < len(self._labels):
             label = self._labels[selection.target_idx]
+        if not label.strip():
+            logger.debug("orchestrator.inactive_target_dropped", target_idx=selection.target_idx)
+            return
         await self._broadcast(
             "input.selection",
             {
@@ -212,17 +295,17 @@ class Orchestrator:
         cost_turn = self.cost.start_turn(self._turn_id)
         try:
             await self._transition(TRANSCRIBING, text)
+            await self._ground()
             await self._broadcast(
                 "conv.transcript",
                 {
                     "speaker": "partner",
                     "text": text,
-                    "partner_id": None,
-                    "partner_name": None,
+                    "partner_id": self._partner_id,
+                    "partner_name": self._partner_name if self._partner_id else None,
                     "confidence": 1.0,
                 },
             )
-            await self._ground()
             if self.mode == "speller" and self.speller is not None:
                 await self._speller_loop()
                 return
@@ -233,33 +316,40 @@ class Orchestrator:
 
     async def _ground(self) -> None:
         await self._transition(GROUNDING, "partner id + retrieval")
-        partner_name = "someone"
-        partner_relationship = "unknown"
-        partner_id: str | None = None
+        self._partner_name = "someone"
+        self._partner_relationship = "unknown"
+        self._partner_id = None
         if self.partner is not None:
             identified = await self.partner.identify(self._utterance)
-            partner_id = identified.partner_id
-            current = self.partner.get_current()
-            if current is not None:
-                partner_name = current.name
-                partner_relationship = current.relationship
-        context = ""
-        activated: list[str] = []
-        if self.retrieval is not None:
-            result = await self.retrieval.retrieve(
-                self._utterance,
-                partner_id=partner_id,
-                select_k=self.config.retrieval.select_k,
-            )
-            context = result.context_text
-            activated = result.activated_node_ids
-        self._context = context
-        self._partner_name = partner_name
-        self._partner_relationship = partner_relationship
-        if activated:
+            self._partner_id = identified.partner_id
+            if self.graph is not None:
+                people = await run_memory(self.worker, self.graph.people)
+                current = next((p for p in people if p.id == self._partner_id), None)
+                if current is not None:
+                    self._partner_name = current.name
+                    self._partner_relationship = current.relationship
+        await self._retrieve(self._utterance)
+
+    async def _retrieve(self, query: str) -> None:
+        self._context = ""
+        self._context_node_ids = []
+        self._context_edges = []
+        if self.retrieval is None:
+            return
+        result = await run_memory(
+            self.worker, self.retrieval.retrieve, query, partner_id=self._partner_id
+        )
+        self._context = result.context_text
+        self._context_node_ids = [node.id for node in result.nodes if node.fact]
+        self._context_edges = result.edges
+        if result.activated_node_ids:
             await self._broadcast(
                 "graph.activate",
-                {"node_ids": activated, "edge_ids": [], "reason": "grounding"},
+                {
+                    "node_ids": result.activated_node_ids,
+                    "edge_ids": [edge.id for edge in result.edges],
+                    "reason": "retrieval",
+                },
             )
 
     async def _intent_round(self) -> None:
@@ -273,8 +363,11 @@ class Orchestrator:
                 return
             self._intent = labels[selection.target_idx]
             await self._transition(CANDIDATE_GEN, self._intent)
+            await self._retrieve(f"{self._utterance}\nChosen intent: {self._intent}")
             candidates, grounding = await self._candidates()
-            selection = await self._show_and_wait(candidates, "candidate", CANDIDATE_WAIT)
+            selection = await self._show_and_wait(
+                candidates, "candidate", CANDIDATE_WAIT, grounding
+            )
             if selection is None:
                 await self._idle(NO_SELECTION_MESSAGE)
                 return
@@ -286,11 +379,16 @@ class Orchestrator:
             return
 
     async def _show_and_wait(
-        self, labels: list[str], round_name: str, wait_state: str
+        self,
+        labels: list[str],
+        round_name: str,
+        wait_state: str,
+        grounding: list[str] | None = None,
     ) -> Selection | None:
         self.trial_id = uuid.uuid4().hex
         self._labels = labels
         self._round = round_name
+        self._grounding_ids = grounding or []
         loop = asyncio.get_running_loop()
         self._selection_future = loop.create_future()
         await self.input.set_targets(self.trial_id, labels, round_name)
@@ -301,7 +399,7 @@ class Orchestrator:
             payload = {
                 "trial_id": self.trial_id,
                 "candidates": labels,
-                "grounding": [],
+                "grounding": grounding or [],
             }
         await self._broadcast(event, payload)
         await self._transition(wait_state, self.trial_id)
@@ -334,17 +432,29 @@ class Orchestrator:
         self.speech.gate(True)
         try:
             spoken = await self.voice.speak(text)
-        finally:
-            self.speech.gate(False)
-        await self._broadcast(
-            "conv.spoken",
-            {
-                "text": spoken.text,
-                "voice": spoken.voice,
-                "cached": spoken.cached,
-                "latency_ms": spoken.latency_ms,
-            },
-        )
+        except Exception as exc:
+            logger.warning("orchestrator.speech_failed", error_type=type(exc).__name__)
+            await self._idle("Speech unavailable; please try again")
+            return
+        payload: dict[str, object] = {
+            "text": spoken.text,
+            "voice": spoken.voice,
+            "cached": spoken.cached,
+            "latency_ms": spoken.latency_ms,
+        }
+        if spoken.audio:
+            payload["audio_b64"] = base64.b64encode(spoken.audio).decode("ascii")
+        outcome = "completed"
+        if self._playback is None:
+            await self._broadcast("conv.spoken", payload)
+        else:
+            try:
+                outcome = await self._playback(payload, self.wait_timeout_s)
+            except Exception as exc:
+                logger.warning("orchestrator.playback_failed", error_type=type(exc).__name__)
+                outcome = "unconfirmed"
+        if outcome == "unconfirmed":
+            self._playback_unconfirmed = True
         self.last_spoken_voice = spoken.voice
         self.last_spoken_text = spoken.text
         await self._transition(LEARNING, "reinforce + extract")
@@ -353,21 +463,54 @@ class Orchestrator:
                 "graph.activate",
                 {"node_ids": grounding, "edge_ids": [], "reason": "spoken"},
             )
-        if self.extraction is not None:
-            extracted = await self.extraction.extract_and_writeback(self._utterance, text)
-            await self._broadcast(
-                "graph.bloom",
-                {
-                    "nodes": [node.model_dump() for node in extracted.nodes],
-                    "edges": [edge.model_dump() for edge in extracted.edges],
-                },
+        detail = "turn complete"
+        if outcome != "completed":
+            logger.warning("orchestrator.playback_incomplete", outcome=outcome)
+            detail += (
+                "; playback unconfirmed, microphone muted until backend restart"
+                if outcome == "unconfirmed"
+                else "; audio playback unavailable"
             )
-        await self._idle("turn complete")
+        try:
+            if self.graph is not None:
+                grounded = set(grounding) & set(self._context_node_ids)
+                edge_ids = [
+                    edge.id
+                    for edge in self._context_edges
+                    if edge.source in grounded and edge.target in grounded
+                ]
+                await run_memory(
+                    self.worker,
+                    self.graph.reinforce,
+                    list(grounded),
+                    edge_ids,
+                    node_increment=self.config.reinforcement.node_increment,
+                    edge_increment=self.config.reinforcement.edge_increment,
+                    max_weight=self.config.reinforcement.max_weight,
+                )
+            if self.extraction is not None:
+                extracted = await self.extraction.extract_and_writeback(self._utterance, text)
+                snapshot = await self.snapshot()
+                nodes = [n for n in snapshot["nodes"] if n["id"] in extracted.committed_node_ids]
+                edges = [e for e in snapshot["edges"] if e["id"] in extracted.committed_edge_ids]
+                if nodes or edges:
+                    await self._broadcast("graph.bloom", {"nodes": nodes, "edges": edges})
+        except Exception as exc:
+            logger.warning("orchestrator.learning_failed", error_type=type(exc).__name__)
+            detail += "; memory update unavailable"
+        finally:
+            if self.graph is not None:
+                try:
+                    await self._broadcast("graph.snapshot", await self.snapshot())
+                except Exception as exc:
+                    logger.warning("orchestrator.snapshot_failed", error_type=type(exc).__name__)
+                    detail += "; memory update unavailable"
+            await self._idle(detail, rearm_mic=outcome != "unconfirmed")
 
-    async def _idle(self, detail: str) -> None:
+    async def _idle(self, detail: str, *, rearm_mic: bool = True) -> None:
         self.trial_id = None
         self._selection_future = None
-        self.speech.gate(False)
+        self.speech.gate(self._playback_unconfirmed or not rearm_mic)
         await self._transition(IDLE, detail)
 
     async def _intent_labels(self) -> list[str]:
@@ -376,7 +519,7 @@ class Orchestrator:
         if self.generation is not None:
             try:
                 labels = await asyncio.wait_for(
-                    self.generation.intent_labels(
+                    self.generation.generate_intents(
                         self._context,
                         self._partner_name,
                         self._partner_relationship,
@@ -385,33 +528,66 @@ class Orchestrator:
                     timeout=self.config.generation.timeout_s,
                 )
             except Exception as exc:
-                logger.warning("orchestrator.intent_gen_fell_through", error=str(exc))
+                logger.warning(
+                    "orchestrator.intent_gen_fell_through",
+                    error=str(exc) or type(exc).__name__,
+                    error_type=type(exc).__name__,
+                    timeout_s=self.config.generation.timeout_s,
+                )
                 labels = []
+            if len(labels) < n_semantic:
+                labels = _FALLBACK_LABELS[:n_semantic]
         if len(labels) < n_semantic:
             labels = await self._offline_json_list("labels", n_semantic, _FALLBACK_LABELS)
-        return labels[:n_semantic] + ["Cancel"]
+        return self._with_cancel(labels[:n_semantic])
+
+    def _with_cancel(self, labels: list[str]) -> list[str]:
+        """Keep Cancel on the last physical target in every conversation round."""
+        available = self.input.n_targets - 1
+        semantic = labels[:available]
+        return semantic + [""] * (available - len(semantic)) + ["Cancel"]
 
     async def _candidates(self) -> tuple[list[str], list[str]]:
         n = self.config.generation.n_candidates
         if self.generation is not None:
             try:
-                candidates, grounding = await asyncio.wait_for(
-                    self.generation.candidate_sentences(
-                        self._context,
-                        self._partner_name,
-                        self._partner_relationship,
-                        self._utterance,
-                        self._intent,
+                result = await asyncio.wait_for(
+                    self.generation.generate_candidates(
+                        user_name=self._user_name,
+                        context=self._context,
+                        context_node_ids=self._context_node_ids,
+                        partner_name=self._partner_name,
+                        partner_relationship=self._partner_relationship,
+                        utterance=self._utterance,
+                        intent=self._intent,
                     ),
                     timeout=self.config.generation.timeout_s,
                 )
+                candidates, grounding = result.candidates, result.grounding
             except Exception as exc:
-                logger.warning("orchestrator.candidate_gen_fell_through", error=str(exc))
+                logger.warning(
+                    "orchestrator.candidate_gen_fell_through",
+                    error=str(exc) or type(exc).__name__,
+                    error_type=type(exc).__name__,
+                    timeout_s=self.config.generation.timeout_s,
+                )
                 candidates, grounding = [], []
             if len(candidates) >= n:
-                return candidates[:n] + ["Cancel"], grounding
+                return self._with_cancel(candidates[:n]), grounding
+            fallback = await GenerationService(
+                llm=StaticLLMProvider(), config=self.config.generation
+            ).generate_candidates(
+                self._user_name,
+                self._context,
+                self._context_node_ids,
+                self._partner_name,
+                self._partner_relationship,
+                self._utterance,
+                self._intent,
+            )
+            return self._with_cancel(fallback.candidates[:n]), fallback.grounding
         candidates = await self._offline_json_list("candidates", n, _FALLBACK_CANDIDATES)
-        return candidates[:n] + ["Cancel"], []
+        return self._with_cancel(candidates[:n]), []
 
     async def _offline_json_list(self, key: str, n: int, fallback: list[str]) -> list[str]:
         """Call the LLM chain. The static link returns ``{}``, which is not
@@ -432,7 +608,11 @@ class Orchestrator:
             if isinstance(values, list) and len(values) >= n:
                 return [str(item) for item in values[:n]]
         except Exception as exc:
-            logger.warning("orchestrator.offline_llm_unusable", error=str(exc))
+            logger.warning(
+                "orchestrator.offline_llm_unusable",
+                error=str(exc) or type(exc).__name__,
+                error_type=type(exc).__name__,
+            )
         return fallback[:n]
 
     async def _speller_loop(self) -> None:

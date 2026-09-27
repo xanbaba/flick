@@ -67,6 +67,7 @@ class SsvepInput(InputSource):
         self._current_trial_id: str | None = None
         self._listen_task: asyncio.Task[None] | None = None
         self._queue: asyncio.Queue[Selection] = asyncio.Queue()
+        self._active_targets: set[int] = set()
 
     async def start(self) -> None:
         self._subscriber = Subscriber(self._sensor_address)
@@ -76,6 +77,7 @@ class SsvepInput(InputSource):
     async def stop(self) -> None:
         if self._listen_task is not None:
             self._listen_task.cancel()
+            await asyncio.gather(self._listen_task, return_exceptions=True)
             self._listen_task = None
         if self._subscriber is not None:
             self._subscriber.close()
@@ -84,11 +86,17 @@ class SsvepInput(InputSource):
             self._publisher.close()
             self._publisher = None
         self._current_trial_id = None
+        self._active_targets.clear()
+        while not self._queue.empty():
+            self._queue.get_nowait()
 
     async def set_targets(self, trial_id: str, labels: list[str], round: str) -> None:
         if self._publisher is None:
             raise RuntimeError(f"{self.name} input is not started")
         self._current_trial_id = trial_id
+        self._active_targets = {
+            i for i, label in enumerate(labels[: self.n_targets]) if label.strip()
+        }
         self._publisher.send(
             ShowTargets(
                 type="stim.show_targets",
@@ -132,6 +140,9 @@ class SsvepInput(InputSource):
                         f"{self.name}.stale_selection_dropped",
                         trial_id=sensor_selection.trial_id,
                     )
+                    continue
+                if sensor_selection.target_idx not in self._active_targets:
+                    logger.debug(f"{self.name}.inactive_target_dropped")
                     continue
                 self._current_trial_id = None  # at most one Selection per trial_id
                 self._queue.put_nowait(
