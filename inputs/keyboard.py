@@ -45,6 +45,7 @@ class KeyboardInput(InputSource):
         self._current_trial_id: str | None = None
         self._queue: asyncio.Queue[Selection] = asyncio.Queue()
         self._started = False
+        self._active_targets: set[int] = set()
 
     async def start(self) -> None:
         self._started = True
@@ -52,9 +53,15 @@ class KeyboardInput(InputSource):
     async def stop(self) -> None:
         self._started = False
         self._current_trial_id = None
+        self._active_targets.clear()
+        while not self._queue.empty():
+            self._queue.get_nowait()
 
     async def set_targets(self, trial_id: str, labels: list[str], round: str) -> None:
         self._current_trial_id = trial_id
+        self._active_targets = {
+            i for i, label in enumerate(labels[: self.n_targets]) if label.strip()
+        }
 
     def handle_key_press(self, raw: KeyPress | dict | str | bytes) -> None:
         """Consume a raw client.key_press payload from the backend's WS layer.
@@ -82,6 +89,9 @@ class KeyboardInput(InputSource):
 
         if not (1 <= key <= self.n_targets):
             logger.warning("keyboard.key_out_of_range", key=key)
+            return
+        if key - 1 not in self._active_targets:
+            logger.debug("keyboard.inactive_target_dropped", key=key)
             return
 
         selection = Selection(

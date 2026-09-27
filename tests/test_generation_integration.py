@@ -80,7 +80,7 @@ async def test_app_generates_prompted_intents_and_candidates(
     intents = next(payload for kind, payload in events if kind == "conv.intents")
     assert intents["labels"] == labels + ["Cancel"]
     generated = next(payload for kind, payload in events if kind == "conv.candidates")
-    assert generated["candidates"] == candidates + ["Cancel"]
+    assert generated["candidates"] == candidates + ["", "Cancel"]
     orch.voice.speak.assert_awaited_once_with(candidates[0])
     intent_call, candidate_call = llm.complete.await_args_list
     assert "Exactly 4 labels" in intent_call.args[1]

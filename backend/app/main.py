@@ -130,7 +130,7 @@ def create_app() -> FastAPI:
         cost=CostTracker(config.privacy.price_table),
         config=config,
         generation=GenerationService(config=config.generation),
-        stim_address=STIM_ADDRESS if config.input.adapter == "keyboard" else None,
+        stim_address=STIM_ADDRESS,
     )
     orchestrator_box["orch"] = orchestrator
 
@@ -279,10 +279,18 @@ def create_app() -> FastAPI:
     async def swap_input(body: InputBody) -> dict[str, str]:
         if orchestrator.state not in (IDLE, UNSEEDED):
             return {"adapter": orchestrator.input.name, "error": "busy"}
-        replacement = build_input(body.adapter, config.mode.targets)
-        await orchestrator.input.stop()
-        orchestrator.input = replacement
-        await orchestrator.input.start()
+        try:
+            replacement = build_input(body.adapter, config.mode.targets)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        try:
+            await orchestrator.swap_input(replacement)
+        except ValueError:
+            return {"adapter": orchestrator.input.name, "error": "busy"}
+        except Exception as exc:
+            logger.warning("input.switch_failed", error_type=type(exc).__name__)
+            raise HTTPException(503, "Input adapter could not start. Please try again.") from exc
+        await hub.broadcast("sys.status", status_payload())
         return {"adapter": replacement.name}
 
     @app.post("/api/cued_block/start")
@@ -336,9 +344,9 @@ def create_app() -> FastAPI:
             input_source=lambda: orchestrator.input,
             snapshot=snapshot_payload,
             status=status_payload,
-            on_connect=[
+            on_connect=lambda: [
                 ("spectator.link", spectator.link()),
-                ("fsm.state", {"state": orchestrator.state, "detail": "connected"}),
+                *orchestrator.connection_events(),
             ],
         )
 

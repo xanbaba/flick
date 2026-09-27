@@ -103,18 +103,20 @@ async def serve(
     input_source: Callable[[], InputSource],
     snapshot: SnapshotFn,
     status: StatusFn,
-    on_connect: list[tuple[str, dict[str, object]]] | None = None,
+    on_connect: Callable[[], list[tuple[str, dict[str, object]]]] | None = None,
 ) -> None:
     await hub.connect(ws)
     try:
         await hub.send(ws, "graph.snapshot", await snapshot())
         await hub.send(ws, "sys.status", status())
-        for message_type, payload in on_connect or []:
+        for message_type, payload in on_connect() if on_connect is not None else []:
             await hub.send(ws, message_type, payload)
         while True:
             raw = await ws.receive_text()
             await _handle_inbound(raw, ws, hub, input_source, snapshot, status)
     except WebSocketDisconnect:
+        logger.debug("ws.disconnected")
+    finally:
         hub.disconnect(ws)
 
 

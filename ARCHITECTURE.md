@@ -721,6 +721,11 @@ class InputSource(ABC):
 
 The orchestrator (§14) holds exactly one `InputSource`. Swapping adapters is a config change or a `POST /api/input`; no other code changes.
 
+Runtime switching is accepted only while idle or unseeded. It transfers the
+selection listener and stimulus publisher to the replacement adapter; failed
+startup restores the previous adapter. Status is broadcast immediately so the
+dashboard badge follows the active input. Unsupported adapters return HTTP 422.
+
 ### 7.2 `keyboard` — the development adapter
 
 **Build this first. It unblocks the entire team.**
@@ -1126,6 +1131,11 @@ CHOSEN INTENT: "{intent}"
 
 `grounding` drives the node-highlight animation. Ids not present in the supplied facts are dropped silently rather than failing the turn.
 
+Cancel retains the last physical target in both conversation rounds (key 5 in
+the five-target configuration). With three candidates, the fourth slot is
+empty and disabled; adapters ignore it without consuming the active trial.
+The four-target configuration uses three semantic slots followed by Cancel.
+
 ### 12.3 Partner identification
 
 Receives the transcript and known `Person` nodes with relationships. Returns `{"partner_id", "confidence", "reason"}`. Below 0.6, keep the previous partner. A manual override always wins and persists until changed.
@@ -1228,6 +1238,10 @@ or reseeding an existing persona returns HTTP 409; replacement is not implicit.
 Both conversation rounds retrieve facts; candidate prompts include their node
 IDs. Committed learning completes before the next utterance is accepted, and
 updated snapshots expose reinforcement alongside bloom events for new memories.
+
+Dashboard reconnection also restores the active intent or candidate choices,
+their existing trial ID and candidate grounding, followed by the current FSM
+state. It does not replay spoken audio or create a new trial.
 
 Fixture persona (`data/fixtures/persona_marcus.json`):
 

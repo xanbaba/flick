@@ -103,6 +103,7 @@ export function CandidatePanel({
               <button
                 key={`${round}-${i}-${label}`}
                 type="button"
+                disabled={!label.trim()}
                 onClick={() => press(String(i + 1))}
                 className={`flex min-w-0 flex-col gap-2 rounded-lg border px-3.5 py-3 text-left transition-all ${
                   chosen
@@ -115,7 +116,7 @@ export function CandidatePanel({
                   <span>{i === labels.length - 1 && label === 'Cancel' ? 'cancel' : round ?? ''}</span>
                 </span>
                 <span className={`leading-snug ${chosen ? 'text-lg font-medium text-ink' : 'text-sm text-[oklch(0.86_0.01_160)]'}`}>
-                  {label}
+                  {label || 'Unused'}
                 </span>
               </button>
             )

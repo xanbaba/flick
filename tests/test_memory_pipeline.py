@@ -347,4 +347,52 @@ def test_candidate_provider_failure_keeps_grounded_fallback(
         candidates = [p for kind, p in events if kind == "conv.candidates"][-1]
         assert candidates["grounding"]
         assert set(candidates["grounding"]) <= {"user", "sam", "chair"}
-        assert len(candidates["candidates"]) == 4
+        assert len(candidates["candidates"]) == 5
+        assert candidates["candidates"][3:] == ["", "Cancel"]
+
+
+@pytest.mark.parametrize("state", ["INTENT_WAIT", "CANDIDATE_WAIT"])
+def test_reconnect_restores_active_choices(application: ApplicationFactory, state: str) -> None:
+    create, _, _ = application
+    app = create()
+    with TestClient(app) as client, ThreadPoolExecutor(max_workers=1) as executor:
+        client.post("/api/onboarding/seed", json={"name": "Alex", "bio": "Alex"})
+        with client.websocket_connect("/ws") as original:
+            response = executor.submit(client.post, "/api/utterance", json={"text": "Hello Sam"})
+            wait_for_state(app, "INTENT_WAIT")
+            if state == "CANDIDATE_WAIT":
+                original.send_json({"type": "client.key_press", "ts": time.time(), "key": "1"})
+                wait_for_state(app, state)
+            trial_id = app.state.orchestrator.trial_id
+        with client.websocket_connect("/ws") as restored:
+            messages = [restored.receive_json() for _ in range(5)]
+            kind = "conv.intents" if state == "INTENT_WAIT" else "conv.candidates"
+            choices = next(message["payload"] for message in messages if message["type"] == kind)
+            assert choices["trial_id"] == trial_id
+            assert (choices.get("labels") or choices["candidates"])[-1] == "Cancel"
+            if state == "CANDIDATE_WAIT":
+                assert set(choices["grounding"]) == {"user", "chair"}
+            assert messages[-1]["payload"]["state"] == state
+            restored.send_json({"type": "client.key_press", "ts": time.time(), "key": "5"})
+            if state == "CANDIDATE_WAIT":
+                wait_for_state(app, "INTENT_WAIT")
+                restored.send_json({"type": "client.key_press", "ts": time.time(), "key": "5"})
+            assert response.result(timeout=5).status_code == 200
+            assert app.state.orchestrator.state == "IDLE"
+
+
+def test_input_endpoint_switches_listener_and_validates_adapter(
+    application: ApplicationFactory,
+) -> None:
+    create, _, _ = application
+    app = create()
+    with TestClient(app) as client, client.websocket_connect("/ws") as ws:
+        assert client.post("/api/input", json={"adapter": "unknown"}).status_code == 422
+        original = app.state.orchestrator.input
+        assert client.post("/api/input", json={"adapter": "keyboard"}).json() == {
+            "adapter": "keyboard"
+        }
+        assert app.state.orchestrator.input is not original
+        assert not original.status()["started"]
+        client.post("/api/onboarding/seed", json={"name": "Alex", "bio": "Alex"})
+        turn(client, app, ws, "Hello Sam")

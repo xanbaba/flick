@@ -122,7 +122,8 @@ class Orchestrator:
         self._intent = ""
         self._turn_id = ""
         self._selection_future: asyncio.Future[Selection] | None = None
-        self._tasks: list[asyncio.Task[None]] = []
+        self._selection_task: asyncio.Task[None] | None = None
+        self._grounding_ids: list[str] = []
         self._turn_lock = asyncio.Lock()
         self._stim: Publisher | None = None
         self._seeded = False
@@ -133,34 +134,51 @@ class Orchestrator:
         self._seed_lock = asyncio.Lock()
 
     async def start(self) -> None:
-        await self.input.start()
+        await self._start_input()
         await self.speech.start()
         self.speech.gate(True)
-        if self._stim_address is not None:
-            try:
-                self._stim = Publisher(self._stim_address)
-            except Exception as exc:
-                logger.warning("orchestrator.stim_bind_failed", error=str(exc))
-                self._stim = None
         status = await self.onboarding_status()
         if status["seeded"]:
             await self._transition(IDLE, "graph already seeded")
             self.speech.gate(False)
         else:
             await self._transition(UNSEEDED, "awaiting onboarding")
-        self._tasks.append(asyncio.create_task(self._selection_loop()))
 
-    async def stop(self) -> None:
-        for task in self._tasks:
-            task.cancel()
-        if self._tasks:
-            await asyncio.gather(*self._tasks, return_exceptions=True)
-        self._tasks.clear()
+    async def _start_input(self) -> None:
+        await self.input.start()
+        if self.input.name == "keyboard" and self._stim_address is not None:
+            self._stim = Publisher(self._stim_address)
+        self._selection_task = asyncio.create_task(self._selection_loop())
+
+    async def _stop_input(self) -> None:
+        if self._selection_task is not None:
+            self._selection_task.cancel()
+            await asyncio.gather(self._selection_task, return_exceptions=True)
+            self._selection_task = None
         await self.input.stop()
-        await self.speech.stop()
         if self._stim is not None:
             self._stim.close()
             self._stim = None
+
+    async def swap_input(self, replacement: InputSource) -> None:
+        """Transfer the selection listener and stimulus socket, rolling back on failure."""
+        if self.state not in (IDLE, UNSEEDED) or self._turn_lock.locked():
+            raise ValueError("Cannot switch input during a conversation turn")
+        async with self._turn_lock:
+            previous = self.input
+            await self._stop_input()
+            self.input = replacement
+            try:
+                await self._start_input()
+            except Exception:
+                await self._stop_input()
+                self.input = previous
+                await self._start_input()
+                raise
+
+    async def stop(self) -> None:
+        await self._stop_input()
+        await self.speech.stop()
 
     async def seed(self, bio: str, name: str) -> dict[str, object]:
         if self._seed_lock.locked():
@@ -204,12 +222,33 @@ class Orchestrator:
             "edges": [edge.model_dump() for edge in edges],
         }
 
+    def connection_events(self) -> list[tuple[str, dict[str, object]]]:
+        """Restore the current choices without starting a new selection trial."""
+        events: list[tuple[str, dict[str, object]]] = []
+        if self.state == INTENT_WAIT:
+            events.append(("conv.intents", {"trial_id": self.trial_id, "labels": self._labels}))
+        elif self.state == CANDIDATE_WAIT:
+            events.append(
+                (
+                    "conv.candidates",
+                    {
+                        "trial_id": self.trial_id,
+                        "candidates": self._labels,
+                        "grounding": self._grounding_ids,
+                    },
+                )
+            )
+        events.append(("fsm.state", {"state": self.state, "detail": "connected"}))
+        return events
+
     async def submit_utterance(self, text: str) -> None:
         """Run a turn until it is waiting on a selection, or has returned to IDLE."""
         if self.state != IDLE:
             logger.info("orchestrator.utterance_dropped", state=self.state)
             return
         async with self._turn_lock:
+            if self.state != IDLE:
+                return
             await self._run_until_waiting(text)
 
     async def _selection_loop(self) -> None:
@@ -230,6 +269,9 @@ class Orchestrator:
         label = ""
         if 0 <= selection.target_idx < len(self._labels):
             label = self._labels[selection.target_idx]
+        if not label.strip():
+            logger.debug("orchestrator.inactive_target_dropped", target_idx=selection.target_idx)
+            return
         await self._broadcast(
             "input.selection",
             {
@@ -343,6 +385,7 @@ class Orchestrator:
         self.trial_id = uuid.uuid4().hex
         self._labels = labels
         self._round = round_name
+        self._grounding_ids = grounding or []
         loop = asyncio.get_running_loop()
         self._selection_future = loop.create_future()
         await self.input.set_targets(self.trial_id, labels, round_name)
@@ -474,7 +517,13 @@ class Orchestrator:
                 labels = _FALLBACK_LABELS[:n_semantic]
         if len(labels) < n_semantic:
             labels = await self._offline_json_list("labels", n_semantic, _FALLBACK_LABELS)
-        return labels[:n_semantic] + ["Cancel"]
+        return self._with_cancel(labels[:n_semantic])
+
+    def _with_cancel(self, labels: list[str]) -> list[str]:
+        """Keep Cancel on the last physical target in every conversation round."""
+        available = self.input.n_targets - 1
+        semantic = labels[:available]
+        return semantic + [""] * (available - len(semantic)) + ["Cancel"]
 
     async def _candidates(self) -> tuple[list[str], list[str]]:
         n = self.config.generation.n_candidates
@@ -502,7 +551,7 @@ class Orchestrator:
                 )
                 candidates, grounding = [], []
             if len(candidates) >= n:
-                return candidates[:n] + ["Cancel"], grounding
+                return self._with_cancel(candidates[:n]), grounding
             fallback = await GenerationService(
                 llm=StaticLLMProvider(), config=self.config.generation
             ).generate_candidates(
@@ -514,9 +563,9 @@ class Orchestrator:
                 self._utterance,
                 self._intent,
             )
-            return fallback.candidates[:n] + ["Cancel"], fallback.grounding
+            return self._with_cancel(fallback.candidates[:n]), fallback.grounding
         candidates = await self._offline_json_list("candidates", n, _FALLBACK_CANDIDATES)
-        return candidates[:n] + ["Cancel"], []
+        return self._with_cancel(candidates[:n]), []
 
     async def _offline_json_list(self, key: str, n: int, fallback: list[str]) -> list[str]:
         """Call the LLM chain. The static link returns ``{}``, which is not
