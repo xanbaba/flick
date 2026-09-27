@@ -10,6 +10,8 @@ export interface Selection {
   confidence: number;
   source: string; // "ssvep" | "keyboard" | "replay" | "emotiv"
   algorithm: string | null; // "fbcca" | "etrca" | null
+  trigger_kind: 'jaw_clench' | 'eyes_closed' | null;
+  moves: number;
 }
 
 // ---- 6.2 ZMQ P1 → P3 (bci.) ----
@@ -64,7 +66,7 @@ export interface SensorControl {
 }
 
 // ---- 6.3 WebSocket dashboard → P3 (client.) ----
-export interface KeyPress { type: 'client.key_press'; ts: number; key: string } // "1".."5"
+export interface KeyPress { type: 'client.key_press'; ts: number; key: string; trial_id?: string | null }
 export interface RequestSnapshot { type: 'client.request_snapshot'; ts: number }
 export interface PlaybackComplete {
   type: 'client.playback_complete'; ts: number; playback_id: string;
@@ -138,6 +140,10 @@ export interface SysStatusPayload {
 export interface PrivacyCostItem { provider: string; detail: string; usd: number } // UNSPECIFIED
 
 export interface WsPayloads {
+  'scan.targets': { trial_id: string; labels: string[]; round: string; cancel_idx: number; highlight_idx: number };
+  'scan.highlight': { trial_id: string; highlight_idx: number };
+  'scan.selected': { trial_id: string; target_idx: number; hold_s: number };
+  'scan.idle': { trial_id: string | null; reason: string };
   // Generation token limits and deadlines come from server config; changing
   // those limits does not change the intent or candidate payload shapes.
   'eeg.trace': { channels: string[]; data: number[][]; fs: number };

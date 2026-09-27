@@ -92,8 +92,22 @@ class SensorSettings(BaseModel):
 
 
 class InputConfig(BaseModel):
-    adapter: Literal["keyboard", "ssvep", "replay", "emotiv"]
+    adapter: Literal["keyboard", "bci", "ssvep", "replay", "emotiv"]
     replay_file: str | None
+
+
+class ScanConfig(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    trial_timeout_s: float = Field(default=60.0, gt=0)
+    hold_after_select_s: float = Field(default=0.6, ge=0)
+    start_idx: int = Field(default=0, ge=0, le=3)
+    event_max_age_s: float = Field(default=1.0, gt=0)
+    status_max_age_s: float = Field(default=2.5, gt=0)
+    clock_tolerance_s: float = Field(default=0.1, ge=0)
+    source_clock_offset_s: float = 0.0
+    coalesce_s: float = Field(default=0.03, ge=0)
+    poll_interval_s: float = Field(default=0.02, gt=0)
 
 
 class ModeConfig(BaseModel):
@@ -253,6 +267,7 @@ class RecordingConfig(BaseModel):
 
 class AppConfig(BaseModel):
     sensor: SensorSettings = Field(default_factory=SensorSettings)
+    scan: ScanConfig = Field(default_factory=ScanConfig)
     input: InputConfig
     mode: ModeConfig
     eeg: EegConfig

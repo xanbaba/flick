@@ -4,6 +4,15 @@ Changes to `ARCHITECTURE.md`, newest first. Each entry lists what changed, why, 
 
 ---
 
+## Scan input contract — 2026-09-27
+
+Add bounded scan timing/freshness configuration, optional keyboard trial identity
+for the legacy transition, selection trigger/move metadata, and TypeScript scan
+event payloads. These support the BCI adapter and shared scan controller without
+changing the active keyboard UI in the contract commit.
+
+---
+
 ## Shared sensor contracts and runtime settings — 2026-09-27
 
 The coordinated sensor contract revision moves message authority into

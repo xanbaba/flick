@@ -32,6 +32,8 @@ class Selection(BaseModel):
     confidence: float  # 0..1, adapter-defined
     source: str  # "ssvep" | "keyboard" | "replay" | "emotiv"
     algorithm: str | None  # "fbcca" | "etrca" | None
+    trigger_kind: Literal["jaw_clench", "eyes_closed"] | None = None
+    moves: int = Field(default=0, ge=0)
 
 
 # --------------------------------------------------------------------------
@@ -182,6 +184,7 @@ class KeyPress(BaseModel):
     type: Literal["client.key_press"]
     ts: float
     key: str  # "1".."5"
+    trial_id: str | None = None  # required by step-scan; nullable for legacy numeric clients
 
 
 class RequestSnapshot(BaseModel):

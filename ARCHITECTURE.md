@@ -236,6 +236,12 @@ scan:
   trial_timeout_s: 60
   hold_after_select_s: 0.6
   start_idx: 0
+  event_max_age_s: 1.0
+  status_max_age_s: 2.5
+  clock_tolerance_s: 0.1
+  source_clock_offset_s: 0.0
+  coalesce_s: 0.03
+  poll_interval_s: 0.02
 database:
   memory_pool_max: 5
   query_timeout_s: 0.3
@@ -323,6 +329,16 @@ The unused profile/training status fields remain for import/wire compatibility.
 
 `client.key_press` carries displayed `trial_id`, timestamp and key: `n`, `s`, or
 `1`–`4`. Only the keyboard adapter accepts it. Ignore shortcuts while typing.
+The shared model permits a null trial ID only for the existing legacy numeric
+keyboard path; step-scan requires an exact non-null trial match. Selections add
+`trigger_kind` (nullable) and `moves` (default zero) without breaking older adapters.
+BCI source timestamps are converted using configured `source_clock_offset_s`
+(zero for the same-PC UNIX clock). Reject old/future publication and source times;
+never estimate a clock offset from a delayed trigger. Readiness expires after
+`status_max_age_s`. Buffer triggers for `coalesce_s` to arbitrate same-sample
+next/select in favor of select. Events outside that bounded window cannot be
+retroactively reordered. Require an observed below-threshold level for each role
+after trial activation/readiness recovery before accepting its trigger.
 Keep `client.request_snapshot` and correlated `client.playback_complete` with
 existing playback ID/outcome semantics.
 
