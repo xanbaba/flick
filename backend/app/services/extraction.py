@@ -11,6 +11,7 @@ with near-identical nodes within five turns."
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 
@@ -18,9 +19,10 @@ import numpy as np
 from pydantic import BaseModel
 
 from backend.app.services.graph import NODE_COLUMN_TYPES, REL_PAIRS, GraphService
+from backend.app.services.worker import MemoryWorker, run_memory
 from backend.providers.base import EmbeddingProvider, LLMProvider
 from backend.providers.registry import get_embedding_provider, get_llm_provider
-from shared.config import ExtractionConfig, get_settings
+from shared.config import ExtractionConfig, GenerationConfig, get_settings
 
 PROMPTS_DIR = Path(__file__).resolve().parents[2] / "prompts"
 
@@ -93,8 +95,12 @@ class ExtractionService:
         embedder: EmbeddingProvider | None = None,
         config: ExtractionConfig | None = None,
         prompts_dir: Path = PROMPTS_DIR,
+        worker: MemoryWorker | None = None,
+        generation_config: GenerationConfig | None = None,
     ) -> None:
         self._graph = graph
+        self._worker = worker
+        self._generation_config = generation_config or get_settings().config.generation
         self._llm = llm or get_llm_provider()
         self._embedder = embedder or get_embedding_provider()
         self._config = config or get_settings().config.extraction
@@ -109,20 +115,27 @@ class ExtractionService:
 
         prompt = _fill(
             self._template,
-            graph_summary=self._summarize_graph(),
+            graph_summary=await run_memory(self._worker, self._summarize_graph),
             utterance=utterance,
             spoken_text=spoken_text,
         )
-        raw = await self._complete(prompt)
-        parsed = self._parse(raw)
+        async with asyncio.timeout(self._generation_config.timeout_s):
+            raw = await self._complete(prompt)
+            parsed = self._parse(raw)
+            if parsed is None:
+                raw_retry = await self._complete(self._repair_prompt(prompt, raw))
+                parsed = self._parse(raw_retry)
         if parsed is None:
-            raw_retry = await self._complete(self._repair_prompt(prompt, raw))
-            parsed = self._parse(raw_retry)
-        if parsed is None:
-            return empty
+            raise ValueError("Fact extraction returned malformed data after repair")
 
         nodes, edges = parsed
-        return self._commit(nodes, edges)
+        return await run_memory(self._worker, self._commit_atomic, nodes, edges)
+
+    def _commit_atomic(
+        self, nodes: list[ExtractedNode], edges: list[ExtractedEdge]
+    ) -> ExtractionResult:
+        with self._graph.transaction():
+            return self._commit(nodes, edges)
 
     # ---------------------------------------------------------------- #
     # Writeback
@@ -139,15 +152,20 @@ class ExtractionService:
         for node in confident_nodes:
             if node.kind not in NODE_COLUMN_TYPES:
                 continue
-            existing_id = self._find_duplicate(node.kind, node.name)
+            existing_id = self._find_duplicate(
+                node.kind, (node.notes or node.name) if node.kind == "Memory" else node.name
+            )
             if existing_id is not None:
                 self._graph.reinforce(node_ids=[existing_id], edge_ids=[])
                 reinforced_node_ids.append(existing_id)
                 name_to_id[node.name] = existing_id
             else:
-                node_id = self._graph.upsert_node(
-                    node.kind, {"name": node.name, "notes": node.notes}
+                props = (
+                    {"text": node.notes or node.name, "source": "conversation"}
+                    if node.kind == "Memory"
+                    else {"name": node.name, "notes": node.notes}
                 )
+                node_id = self._graph.upsert_node(node.kind, props)
                 committed_node_ids.append(node_id)
                 name_to_id[node.name] = node_id
 
@@ -227,8 +245,8 @@ class ExtractionService:
             _GENERIC_SYSTEM_PROMPT,
             user_prompt,
             json_mode=True,
-            max_tokens=400,
-            timeout=6.0,
+            max_tokens=self._generation_config.max_tokens,
+            timeout=self._generation_config.timeout_s,
         )
 
     @staticmethod

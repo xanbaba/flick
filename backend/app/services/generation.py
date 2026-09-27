@@ -152,10 +152,18 @@ class GenerationService:
         utterance: str,
         intent: str,
     ) -> CandidateResult:
+        facts = [
+            line.strip()[2:].strip()
+            for line in context.splitlines()
+            if line.strip().startswith("- ") and line.strip()[2:].strip()
+        ]
+        identified_context = "\n".join(
+            f"- [{node_id}] {fact}" for node_id, fact in zip(context_node_ids, facts, strict=False)
+        )
         prompt = _fill(
             self._candidates_template,
             user_name=user_name,
-            context=context,
+            context=identified_context or context,
             partner_name=partner_name,
             partner_relationship=partner_relationship,
             utterance=utterance,

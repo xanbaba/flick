@@ -8,14 +8,20 @@ is changed.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 
 from pydantic import BaseModel
 
 from backend.app.services.graph import GraphService
+from backend.app.services.worker import MemoryWorker, run_memory
 from backend.providers.base import LLMProvider
 from backend.providers.registry import get_llm_provider
+from shared.config import GenerationConfig, get_settings
+from shared.logging import get_logger
+
+logger = get_logger(__name__)
 
 PROMPTS_DIR = Path(__file__).resolve().parents[2] / "prompts"
 
@@ -58,8 +64,17 @@ def _extract_json_object(raw: str) -> str:
 class PartnerService:
     """ARCHITECTURE.md section 12.3."""
 
-    def __init__(self, graph: GraphService, llm: LLMProvider | None = None) -> None:
+    def __init__(
+        self,
+        graph: GraphService,
+        llm: LLMProvider | None = None,
+        *,
+        worker: MemoryWorker | None = None,
+        config: GenerationConfig | None = None,
+    ) -> None:
         self._graph = graph
+        self._worker = worker
+        self._config = config or get_settings().config.generation
         self._llm = llm or get_llm_provider()
         self._template = (PROMPTS_DIR / "partner_id.txt").read_text(encoding="utf-8")
         self._current: PartnerIdentification | None = None
@@ -75,6 +90,10 @@ class PartnerService:
         ``None`` clears the override and leaves the last identified
         partner in place.
         """
+        if partner_id is not None and partner_id not in {
+            person.id for person in self._graph.people() if person.id != "user"
+        }:
+            raise ValueError("Partner must be a known person other than the user")
         self._override_id = partner_id
         if partner_id is None:
             if self._current is not None and self._current.overridden:
@@ -93,21 +112,31 @@ class PartnerService:
 
     async def identify(self, transcript: str) -> PartnerIdentification:
         if self._override_id is not None:
-            return self.set_override(self._override_id)
+            assert self._current is not None
+            return self._current
 
-        prompt = _fill(self._template, people=self._people_block(), transcript=transcript)
-        raw = await self._complete(prompt)
-        parsed = self._parse(raw)
-        if parsed is None:
-            raw_retry = await self._complete(self._repair_prompt(prompt, raw))
-            parsed = self._parse(raw_retry)
+        people = await run_memory(self._worker, self._people_block)
+        prompt = _fill(self._template, people=people, transcript=transcript)
+        try:
+            async with asyncio.timeout(self._config.timeout_s):
+                raw = await self._complete(prompt)
+                parsed = self._parse(raw)
+                if parsed is None:
+                    parsed = self._parse(await self._complete(self._repair_prompt(prompt, raw)))
+        except Exception as exc:
+            logger.warning("partner.identification_failed", error_type=type(exc).__name__)
+            return self._keep_previous("partner identification unavailable")
         if parsed is None:
             return self._keep_previous("partner identification unavailable")
 
         if parsed.confidence < CONFIDENCE_FLOOR or parsed.partner_id in {None, "", "unknown"}:
             return self._keep_previous(parsed.reason or "confidence below 0.6")
 
-        known = {person.id for person in self._graph.people()}
+        known = {
+            person.id
+            for person in await run_memory(self._worker, self._graph.people)
+            if person.id != "user"
+        }
         if parsed.partner_id not in known:
             return self._keep_previous("proposed partner is not a known person")
 
@@ -137,7 +166,11 @@ class PartnerService:
 
     async def _complete(self, user_prompt: str) -> str:
         return await self._llm.complete(
-            _GENERIC_SYSTEM_PROMPT, user_prompt, json_mode=True, max_tokens=400, timeout=6.0
+            _GENERIC_SYSTEM_PROMPT,
+            user_prompt,
+            json_mode=True,
+            max_tokens=self._config.max_tokens,
+            timeout=self._config.timeout_s,
         )
 
     @staticmethod

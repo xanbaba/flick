@@ -24,12 +24,23 @@ from typing import Any
 from pydantic import BaseModel
 
 from backend.app.services.graph import GraphService
+from backend.app.services.persona import DEMO_BIO, DEMO_NAME
+from backend.app.services.worker import MemoryWorker, run_memory
 from backend.providers.base import LLMProvider
 from backend.providers.registry import get_llm_provider
+from shared.config import GenerationConfig, get_settings
+from shared.logging import get_logger
 from shared.schemas import GraphEdge, GraphNode
 
 PROMPTS_DIR = Path(__file__).resolve().parents[2] / "prompts"
 FIXTURE_PATH = Path(__file__).resolve().parents[2] / "data" / "fixtures" / "persona_marcus.json"
+
+logger = get_logger(__name__)
+
+
+class SeedUnavailableError(RuntimeError):
+    """No grounded biography could be generated; onboarding can be retried."""
+
 
 BLOOM_BATCH = 10
 BLOOM_INTERVAL_S = 0.15
@@ -92,8 +103,12 @@ class OnboardingService:
         llm: LLMProvider | None = None,
         fixture_path: Path = FIXTURE_PATH,
         interval_s: float = BLOOM_INTERVAL_S,
+        worker: MemoryWorker | None = None,
+        config: GenerationConfig | None = None,
     ) -> None:
         self._graph = graph
+        self._worker = worker
+        self._config = config or get_settings().config.generation
         self._llm = llm or get_llm_provider()
         self._fixture_path = fixture_path
         self._interval_s = interval_s
@@ -101,10 +116,41 @@ class OnboardingService:
 
     async def seed(self, bio: str, name: str) -> AsyncIterator[BloomBatch]:
         payload = await self._payload_from_llm(bio, name)
-        if not payload.get("nodes"):
-            payload = load_fixture(self._fixture_path)
-        seeded = self._graph.seed_from_json(payload)
-        nodes, edges = self._graph.snapshot()
+        usable = [
+            n
+            for n in payload.get("nodes", [])
+            if isinstance(n, dict)
+            and n.get("kind") in {"Person", "Place", "Thing", "Activity", "Need", "Memory"}
+            and isinstance(n.get("text") or n.get("name"), str)
+            and (n.get("text") or n.get("name")).strip()
+        ]
+        if not usable:
+
+            def normalize(value: str) -> str:
+                return " ".join(value.split())
+
+            if normalize(name) != normalize(DEMO_NAME) or normalize(bio) != normalize(DEMO_BIO):
+                raise SeedUnavailableError(
+                    "Biography generation is unavailable. Your biography was not replaced "
+                    "or saved. Please try again."
+                )
+            payload = await run_memory(self._worker, load_fixture, self._fixture_path)
+        else:
+            user = next((n for n in usable if n.get("id") == "user"), {})
+            payload["nodes"] = [
+                {
+                    "notes": user.get("notes", "")
+                    if isinstance(user.get("notes", ""), str)
+                    else "",
+                    "id": "user",
+                    "kind": "Person",
+                    "name": name.strip(),
+                    "relationship": "self",
+                },
+                *[n for n in usable if n.get("id") != "user"],
+            ]
+        seeded = await run_memory(self._worker, self._graph.seed_from_json, payload)
+        nodes, edges = await run_memory(self._worker, self._graph.snapshot)
         by_id = {node.id: node for node in nodes}
         ordered = [by_id[node_id] for node_id in seeded.node_ids if node_id in by_id]
         emitted: set[str] = set()
@@ -126,26 +172,33 @@ class OnboardingService:
     async def _payload_from_llm(self, bio: str, name: str) -> dict[str, Any]:
         text = f"{name}\n\n{bio}".strip()
         first_prompt = _fill(self._template, pass_instructions=_FIRST_PASS, bio=text)
-        first_raw = await self._complete(first_prompt)
-        first = self._parse(first_raw)
-        if first is None:
-            first = self._parse(await self._complete(self._repair_prompt(first_prompt, first_raw)))
+        first = await self._pass(first_prompt)
         if not first or not first.get("nodes"):
             return {"nodes": [], "edges": []}
-
         expansion = _SECOND_PASS.replace("{first_graph}", json.dumps(first))
         second_prompt = _fill(self._template, pass_instructions=expansion, bio=text)
-        second_raw = await self._complete(second_prompt)
-        second = self._parse(second_raw)
-        if second is None:
-            second = self._parse(
-                await self._complete(self._repair_prompt(second_prompt, second_raw))
-            )
+        second = await self._pass(second_prompt)
         return _merge(first, second or {"nodes": [], "edges": []})
+
+    async def _pass(self, prompt: str) -> dict[str, Any] | None:
+        try:
+            async with asyncio.timeout(self._config.timeout_s):
+                raw = await self._complete(prompt)
+                parsed = self._parse(raw)
+                if parsed is None:
+                    parsed = self._parse(await self._complete(self._repair_prompt(prompt, raw)))
+                return parsed
+        except Exception as exc:
+            logger.warning("onboarding.generation_failed", error_type=type(exc).__name__)
+            return None
 
     async def _complete(self, user_prompt: str) -> str:
         return await self._llm.complete(
-            _GENERIC_SYSTEM_PROMPT, user_prompt, json_mode=True, max_tokens=4000, timeout=6.0
+            _GENERIC_SYSTEM_PROMPT,
+            user_prompt,
+            json_mode=True,
+            max_tokens=4000,
+            timeout=self._config.timeout_s,
         )
 
     @staticmethod
@@ -167,11 +220,14 @@ class OnboardingService:
             return None
         if not isinstance(data, dict):
             return None
-        nodes = data.get("nodes", [])
+        nodes = data.get("nodes")
         edges = data.get("edges", [])
         if not isinstance(nodes, list) or not isinstance(edges, list):
             return None
-        return {"nodes": nodes, "edges": edges}
+        return {
+            "nodes": [n for n in nodes if isinstance(n, dict)],
+            "edges": [e for e in edges if isinstance(e, dict)],
+        }
 
 
 def _merge(first: dict[str, Any], second: dict[str, Any]) -> dict[str, Any]:

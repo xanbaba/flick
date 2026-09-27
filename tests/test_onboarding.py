@@ -8,6 +8,7 @@ from pathlib import Path
 from backend.app.services.generation import GenerationService
 from backend.app.services.graph import GraphService
 from backend.app.services.onboarding import BLOOM_BATCH, OnboardingService, load_fixture
+from backend.app.services.persona import DEMO_BIO, DEMO_NAME
 from backend.app.services.retrieval import RetrievalService, time_retrieval
 from backend.providers.llm_static import StaticLLMProvider
 
@@ -28,7 +29,7 @@ def test_static_onboarding_seeds_fixture_and_blooms_in_batches(tmp_path: Path) -
     service = OnboardingService(graph, llm=StaticLLMProvider(), interval_s=0)
 
     async def collect() -> list:
-        return [batch async for batch in service.seed("Marcus Alvarez bio", "Marcus Alvarez")]
+        return [batch async for batch in service.seed(DEMO_BIO, DEMO_NAME)]
 
     batches = asyncio.run(collect())
     assert graph.node_count() == len(load_fixture()["nodes"])

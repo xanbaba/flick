@@ -1209,6 +1209,26 @@ Served at `/` when `GET /api/onboarding/status` reports `seeded: false`.
 
 That streaming detail is worth the twenty minutes. A graph that materialises instantly looks like a fixture; a graph that grows looks like the system learning, and it is the same data either way.
 
+The backend owns one persistent graph for the application lifetime. Graph and
+embedding operations run serially on a dedicated worker; provider calls remain
+asynchronous. On restart, the persisted `user` Person determines onboarding
+status and the speaker name. REST and WebSocket snapshots use that same graph.
+
+Onboarding explicitly creates the `user` Person from the submitted name and
+commits validated nodes and edges atomically before streaming bloom batches.
+The 150-300 node target never justifies inventing facts. A valid first pass can
+be used when expansion fails. Each pass has one repair within the configured
+generation deadline, retaining the onboarding allowance of 4000 tokens.
+
+The bundled fixture is an offline fallback **only for the unchanged demo name
+and biography** (ignoring whitespace). Custom-biography generation failure
+returns a retryable HTTP 503 and leaves the graph unchanged. Concurrent seeding
+or reseeding an existing persona returns HTTP 409; replacement is not implicit.
+
+Both conversation rounds retrieve facts; candidate prompts include their node
+IDs. Committed learning completes before the next utterance is accepted, and
+updated snapshots expose reinforcement alongside bloom events for new memories.
+
 Fixture persona (`data/fixtures/persona_marcus.json`):
 
 > Marcus Alvarez, 54, a former high-school music teacher in Miami. Diagnosed with ALS three years ago; he now has no reliable speech or hand movement. His daughter Sofia visits on Sunday afternoons and he calls her "mija". His grandson Mateo is four. His wife Elena manages his care. His home nurse is Priya, who comes on weekday mornings. He has a nine-year-old beagle called Rosie who sleeps under his chair. He hates the living-room recliner because it hurts his lower back, and prefers the window seat where he can see the jacaranda tree. He used to play trumpet in a salsa band called Los Vientos. He is stubborn about not being spoken over, likes his coffee unreasonably strong, and watches Marlins games with the sound off.
