@@ -9,7 +9,9 @@ presses completes a turn through SPEAKING.
 from __future__ import annotations
 
 import asyncio
+import base64
 import time
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -24,7 +26,7 @@ from backend.app.orchestrator import (
 )
 from backend.app.services.cost import CostTracker
 from backend.app.services.speech import SpeechService
-from backend.app.services.voice import VoiceService
+from backend.app.services.voice import SpokenResult, VoiceService
 from inputs.keyboard import KeyboardInput
 from shared.config import get_settings
 from shared.schemas import KeyPress
@@ -66,6 +68,30 @@ async def test_unseeded_ignores_an_utterance(tmp_path) -> None:
         assert orch.state == UNSEEDED
         await orch.submit_utterance("hello there")
         assert orch.state == UNSEEDED
+    finally:
+        await orch.stop()
+
+
+@pytest.mark.parametrize("audio", [b"\x00\xfftest audio", b""])
+async def test_spoken_event_delivers_audio_when_available(tmp_path, audio: bytes) -> None:
+    orch, _keyboard, events = await _harness(tmp_path)
+    orch.voice.speak = AsyncMock(
+        return_value=SpokenResult(
+            text="Hello",
+            audio=audio,
+            voice="elevenlabs" if audio else "browser",
+            cached=False,
+            latency_ms=1.0,
+        )
+    )
+    try:
+        await orch._speak_and_learn("Hello", [])
+        payload = next(payload for kind, payload in events if kind == "conv.spoken")
+        assert payload["text"] == "Hello"
+        if audio:
+            assert base64.b64decode(payload["audio_b64"], validate=True) == audio
+        else:
+            assert "audio_b64" not in payload
     finally:
         await orch.stop()
 

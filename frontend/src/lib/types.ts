@@ -83,9 +83,8 @@ export interface GraphNode { id: string; label: string; kind: NodeKind; weight: 
 export interface GraphEdge { id: string; source: string; target: string; kind: string; weight: number }
 
 // ---- WebSocket P3 → dashboard (ARCHITECTURE.md §6.5 table). Envelope {type, ts, payload}. ----
-// Shapes marked UNSPECIFIED are not pinned down by schemas.py or ARCHITECTURE.md; they are this
-// client's assumption and must be confirmed with Dev A before the backend emits them.
-export interface ProviderHealth { name: string; healthy: boolean; local?: boolean } // UNSPECIFIED
+// sys.status is assembled by the backend, not a pydantic model. The live payload
+// uses a provider-health map, and refresh / integrity are null until P2 exists.
 export interface SysStatusPayload {
   input_source: string;
   input_badge: string | null; // rendered high-contrast whenever non-null (§7.6)
@@ -93,13 +92,15 @@ export interface SysStatusPayload {
   connected: boolean;
   replay: boolean;
   local_mode: boolean;
-  profile: 'hi' | 'lo';
-  measured_refresh_hz: number;
-  providers: { llm: ProviderHealth; stt: ProviderHealth; tts: ProviderHealth }; // UNSPECIFIED shape
-  stimulus_integrity: Omit<StimulusIntegrity, 'type' | 'ts'>; // UNSPECIFIED shape
+  profile: 'auto' | 'hi' | 'lo';
+  measured_refresh_hz: number | null;
+  providers: Record<string, Record<string, boolean>>;
+  stimulus_integrity: {
+    measured_refresh_hz: number;
+    dropped_frames_last_s: number;
+    frame_interval_std_ms: number;
+  } | null;
   telemetry_dropped: number;
-  // PROPOSED additions (need the AGENTS.md §4 process). Without them the dashboard cannot label
-  // PSD markers or draw the threshold line without hardcoding config values (AGENTS.md #7).
   frequencies?: number[];
   cancel_idx?: number;
   decision?: { rho_threshold: number; margin_ratio: number; dwell_windows: number };
@@ -114,7 +115,13 @@ export interface WsPayloads {
   'conv.transcript': { speaker: string; text: string; partner_id: string | null; partner_name: string | null; confidence: number };
   'conv.intents': { trial_id: string; labels: string[] };
   'conv.candidates': { trial_id: string; candidates: string[]; grounding: string[] };
-  'conv.spoken': { text: string; voice: 'cache' | 'elevenlabs' | 'piper' | 'browser'; cached: boolean; latency_ms: number };
+  'conv.spoken': {
+    text: string
+    voice: 'cache' | 'elevenlabs' | 'piper' | 'browser'
+    cached: boolean
+    latency_ms: number
+    audio_b64?: string
+  };
   'graph.snapshot': { nodes: GraphNode[]; edges: GraphEdge[] };
   'graph.activate': { node_ids: string[]; edge_ids: string[]; reason: string };
   'graph.bloom': { nodes: GraphNode[]; edges: GraphEdge[] };

@@ -16,6 +16,7 @@ trial_id does not match the current one is discarded.
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import time
 import uuid
@@ -336,15 +337,15 @@ class Orchestrator:
             spoken = await self.voice.speak(text)
         finally:
             self.speech.gate(False)
-        await self._broadcast(
-            "conv.spoken",
-            {
-                "text": spoken.text,
-                "voice": spoken.voice,
-                "cached": spoken.cached,
-                "latency_ms": spoken.latency_ms,
-            },
-        )
+        payload: dict[str, object] = {
+            "text": spoken.text,
+            "voice": spoken.voice,
+            "cached": spoken.cached,
+            "latency_ms": spoken.latency_ms,
+        }
+        if spoken.audio:
+            payload["audio_b64"] = base64.b64encode(spoken.audio).decode("ascii")
+        await self._broadcast("conv.spoken", payload)
         self.last_spoken_voice = spoken.voice
         self.last_spoken_text = spoken.text
         await self._transition(LEARNING, "reinforce + extract")
