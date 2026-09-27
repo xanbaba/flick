@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+import uuid
 from collections.abc import Awaitable, Callable
 
 from fastapi import WebSocket, WebSocketDisconnect
@@ -23,6 +24,7 @@ from shared.schemas import (
     ClientMessage,
     EegChunk,
     KeyPress,
+    PlaybackComplete,
     PsdFrame,
     RequestSnapshot,
     TargetScores,
@@ -39,6 +41,7 @@ StatusFn = Callable[[], dict[str, object]]
 class Hub:
     def __init__(self) -> None:
         self._clients: set[WebSocket] = set()
+        self._playbacks: dict[str, dict[WebSocket, asyncio.Future[str]]] = {}
 
     async def connect(self, ws: WebSocket) -> None:
         await ws.accept()
@@ -46,6 +49,37 @@ class Hub:
 
     def disconnect(self, ws: WebSocket) -> None:
         self._clients.discard(ws)
+        for pending in self._playbacks.values():
+            future = pending.get(ws)
+            if future is not None and not future.done():
+                future.set_result("unconfirmed")
+
+    def playback_complete(self, ws: WebSocket, message: PlaybackComplete) -> None:
+        future = self._playbacks.get(message.playback_id, {}).get(ws)
+        if future is not None and not future.done():
+            future.set_result(message.outcome)
+
+    async def play(self, payload: dict[str, object], timeout_s: float) -> str:
+        """Wait for every recipient; a silent or disconnected client is not completion."""
+        playback_id = uuid.uuid4().hex
+        pending = {ws: asyncio.get_running_loop().create_future() for ws in self._clients}
+        self._playbacks[playback_id] = pending
+        try:
+            await self.broadcast(
+                "conv.spoken",
+                {**payload, "playback_id": playback_id, "playback_timeout_s": timeout_s},
+            )
+            if not pending:
+                return "unavailable"
+            try:
+                outcomes = await asyncio.wait_for(asyncio.gather(*pending.values()), timeout_s)
+            except TimeoutError:
+                return "unconfirmed"
+            if "unconfirmed" in outcomes:
+                return "unconfirmed"
+            return "completed" if all(result == "completed" for result in outcomes) else "failed"
+        finally:
+            self._playbacks.pop(playback_id, None)
 
     async def broadcast(self, message_type: str, payload: dict[str, object]) -> None:
         body = {"type": message_type, "ts": time.time(), "payload": payload}
@@ -56,7 +90,7 @@ class Hub:
             except Exception:
                 dead.append(ws)
         for ws in dead:
-            self._clients.discard(ws)
+            self.disconnect(ws)
 
     async def send(self, ws: WebSocket, message_type: str, payload: dict[str, object]) -> None:
         await ws.send_json({"type": message_type, "ts": time.time(), "payload": payload})
@@ -142,3 +176,5 @@ async def _handle_inbound(
     if isinstance(message, RequestSnapshot):
         await hub.send(ws, "graph.snapshot", await snapshot())
         await hub.send(ws, "sys.status", status())
+    elif isinstance(message, PlaybackComplete):
+        hub.playback_complete(ws, message)

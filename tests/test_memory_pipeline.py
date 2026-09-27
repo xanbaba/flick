@@ -193,6 +193,19 @@ def turn(client: TestClient, app: FastAPI, ws: WebSocketTestSession, utterance: 
         ws.send_json({"type": "client.key_press", "ts": time.time(), "key": "1"})
         wait_for_state(app, "CANDIDATE_WAIT")
         ws.send_json({"type": "client.key_press", "ts": time.time(), "key": "2"})
+        while True:
+            message = ws.receive_json()
+            if message["type"] == "conv.spoken":
+                assert app.state.orchestrator.speech.gated
+                ws.send_json(
+                    {
+                        "type": "client.playback_complete",
+                        "ts": time.time(),
+                        "playback_id": message["payload"]["playback_id"],
+                        "outcome": "completed",
+                    }
+                )
+                break
         assert response.result(timeout=10).status_code == 200
     assert app.state.orchestrator.state == "IDLE"
 
@@ -396,3 +409,80 @@ def test_input_endpoint_switches_listener_and_validates_adapter(
         assert not original.status()["started"]
         client.post("/api/onboarding/seed", json={"name": "Alex", "bio": "Alex"})
         turn(client, app, ws, "Hello Sam")
+
+
+def receive_kind(ws: WebSocketTestSession, kind: str) -> dict[str, Any]:
+    while True:
+        message = ws.receive_json()
+        if message["type"] == kind:
+            return message["payload"]
+
+
+@pytest.mark.parametrize("outcome", ["completed", "failed"])
+def test_playback_waits_for_matching_ack_from_every_dashboard(
+    application: ApplicationFactory, outcome: str
+) -> None:
+    create, _, _ = application
+    app = create()
+    with (
+        TestClient(app) as client,
+        client.websocket_connect("/ws") as first,
+        client.websocket_connect("/ws") as second,
+        ThreadPoolExecutor(max_workers=1) as executor,
+    ):
+        client.post("/api/onboarding/seed", json={"name": "Alex", "bio": "Alex"})
+        response = executor.submit(client.post, "/api/utterance", json={"text": "Hello Sam"})
+        wait_for_state(app, "INTENT_WAIT")
+        first.send_json({"type": "client.key_press", "ts": time.time(), "key": "1"})
+        wait_for_state(app, "CANDIDATE_WAIT")
+        first.send_json({"type": "client.key_press", "ts": time.time(), "key": "1"})
+        spoken = receive_kind(first, "conv.spoken")
+        assert receive_kind(second, "conv.spoken")["playback_id"] == spoken["playback_id"]
+        assert app.state.orchestrator.state == "SPEAKING"
+        assert app.state.orchestrator.speech.gated
+        acknowledgment = {
+            "type": "client.playback_complete",
+            "ts": time.time(),
+            "playback_id": spoken["playback_id"],
+            "outcome": outcome,
+        }
+        first.send_json({**acknowledgment, "playback_id": "old-reply"})
+        first.send_json({"type": "client.request_snapshot", "ts": time.time()})
+        receive_kind(first, "graph.snapshot")
+        first.send_json(acknowledgment)
+        # Duplicate acknowledgments from one recipient cannot complete another's playback.
+        first.send_json(acknowledgment)
+        first.send_json({"type": "client.request_snapshot", "ts": time.time()})
+        receive_kind(first, "graph.snapshot")
+        assert app.state.orchestrator.state == "SPEAKING"
+        assert app.state.orchestrator.speech.gated
+        second.send_json(acknowledgment)
+        assert response.result(timeout=5).status_code == 200
+        assert not app.state.orchestrator.speech.gated
+        assert app.state.orchestrator.state == "IDLE"
+
+
+@pytest.mark.parametrize("disconnect", [False, True])
+def test_unconfirmed_playback_keeps_microphone_muted(
+    application: ApplicationFactory, disconnect: bool
+) -> None:
+    create, _, _ = application
+    app = create()
+    with TestClient(app) as client, ThreadPoolExecutor(max_workers=1) as executor:
+        client.post("/api/onboarding/seed", json={"name": "Alex", "bio": "Alex"})
+        with client.websocket_connect("/ws") as ws:
+            response = executor.submit(client.post, "/api/utterance", json={"text": "Hello Sam"})
+            wait_for_state(app, "INTENT_WAIT")
+            ws.send_json({"type": "client.key_press", "ts": time.time(), "key": "1"})
+            wait_for_state(app, "CANDIDATE_WAIT")
+            app.state.orchestrator.wait_timeout_s = 0.1
+            ws.send_json({"type": "client.key_press", "ts": time.time(), "key": "1"})
+            receive_kind(ws, "conv.spoken")
+            if disconnect:
+                ws.close()
+            assert response.result(timeout=5).status_code == 200
+        assert app.state.orchestrator.state == "IDLE"
+        assert app.state.orchestrator.speech.gated
+        # A subsequent manual turn timing out must not accidentally rearm the mic.
+        client.post("/api/utterance", json={"text": "Try again"})
+        assert app.state.orchestrator.speech.gated

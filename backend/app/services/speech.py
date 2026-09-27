@@ -62,6 +62,11 @@ class SpeechService:
         """Hard mic gate. Set True before TTS playback starts, False
         only after it finishes (orchestrator's SPEAKING state)."""
         self._gated = gated
+        if gated:
+            self._voiced_run = 0
+            self._unvoiced_run = 0
+            self._in_speech = False
+            self._buffer.clear()
 
     @property
     def gated(self) -> bool:

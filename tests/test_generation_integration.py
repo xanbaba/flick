@@ -32,7 +32,10 @@ def app_orchestrator(
     config.voice.cache_dir = str(tmp_path / "audio")
     settings = Settings(config=config, env=EnvSettings(_env_file=None))
     monkeypatch.setattr(main, "get_settings", lambda: settings)
-    return main.create_app().state.orchestrator, llm
+    orch = main.create_app().state.orchestrator
+    # This test bypasses lifespan and has no browser connection.
+    orch._playback = None
+    return orch, llm
 
 
 async def test_app_generates_prompted_intents_and_candidates(

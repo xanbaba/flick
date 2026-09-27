@@ -298,3 +298,16 @@ async def test_switch_transfers_real_stimulus_socket_in_both_directions(tmp_path
         assert orch.input.status()["current_trial_id"] == "new-trial"
     finally:
         await orch.stop()
+
+
+async def test_synthesis_failure_recovers_without_claiming_speech(tmp_path) -> None:
+    orch, _, events = await _harness(tmp_path)
+    orch.voice.speak = AsyncMock(side_effect=RuntimeError("synthesis unavailable"))
+    try:
+        await orch._speak_and_learn("Hello", [])
+        assert orch.state == IDLE
+        assert not orch.speech.gated
+        assert not any(kind == "conv.spoken" for kind, _ in events)
+        assert "Speech unavailable" in events[-1][1]["detail"]
+    finally:
+        await orch.stop()

@@ -633,6 +633,9 @@ waits for every receiving dashboard before rearming the microphone. The
 playback deadline uses the existing conversation wait timeout (30 seconds).
 The browser stops playback on that deadline or disconnection. Missing
 acknowledgments keep the microphone gated and produce an informative status.
+That conservative gate remains latched until backend restart; manual prompts
+remain available. A reported playback failure is safe to rearm because the
+browser has already stopped its output.
 
 | `type` | Rate | Payload |
 |---|---|---|

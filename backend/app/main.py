@@ -131,6 +131,7 @@ def create_app() -> FastAPI:
         config=config,
         generation=GenerationService(config=config.generation),
         stim_address=STIM_ADDRESS,
+        playback=hub.play,
     )
     orchestrator_box["orch"] = orchestrator
 

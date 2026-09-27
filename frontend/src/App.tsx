@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { StatusBar } from './components/StatusBar'
 import { api } from './lib/api'
 import { MemoryState } from './lib/memory'
-import { playAudio, speak, unlockAudio } from './lib/playback'
+import { playReply, stopPlayback, unlockAudio } from './lib/playback'
 import type { MemoryBrain } from './lib/brain'
 import { emptyStreams, type Streams } from './lib/streams'
 import type { AnalyticsSummary, FsmState, SysStatusPayload, WsMessage, WsPayloads } from './lib/types'
@@ -98,8 +98,13 @@ export function App() {
         } else if (msg.type === 'fsm.state') {
           ++statusRequest
         } else if (msg.type === 'conv.spoken') {
-          if (msg.payload.voice === 'browser') speak(msg.payload.text)
-          else if (msg.payload.audio_b64) playAudio(msg.payload.audio_b64, msg.payload.voice)
+          const playbackId = msg.payload.playback_id
+          void playReply(msg.payload).then((outcome) => {
+            if (playbackId) socket.send({
+              type: 'client.playback_complete', ts: Date.now() / 1000,
+              playback_id: playbackId, outcome,
+            })
+          })
         }
         setDash((d) => ({ ...reduce(d, msg), graphNodes: memory.current.count }))
       },
@@ -111,6 +116,7 @@ export function App() {
       (conn) => {
         setDash((d) => ({ ...d, conn }))
         if (conn.state === 'live') refreshStatus()
+        else stopPlayback()
       },
     )
     socketRef.current = socket
@@ -128,6 +134,7 @@ export function App() {
     return () => {
       alive = false
       window.removeEventListener('keydown', onKey)
+      stopPlayback()
       socket.close()
       socketRef.current = null
     }

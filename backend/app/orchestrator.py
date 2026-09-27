@@ -95,9 +95,12 @@ class Orchestrator:
         stim_address: str | None = None,
         graph: GraphService | None = None,
         worker: MemoryWorker | None = None,
+        playback: Callable[[dict[str, object], float], Awaitable[str]] | None = None,
     ) -> None:
         self.graph = graph
         self.worker = worker
+        self._playback = playback
+        self._playback_unconfirmed = False
         self.input = input_source
         self._broadcast = broadcast
         self.voice = voice
@@ -429,8 +432,10 @@ class Orchestrator:
         self.speech.gate(True)
         try:
             spoken = await self.voice.speak(text)
-        finally:
-            self.speech.gate(False)
+        except Exception as exc:
+            logger.warning("orchestrator.speech_failed", error_type=type(exc).__name__)
+            await self._idle("Speech unavailable; please try again")
+            return
         payload: dict[str, object] = {
             "text": spoken.text,
             "voice": spoken.voice,
@@ -439,7 +444,17 @@ class Orchestrator:
         }
         if spoken.audio:
             payload["audio_b64"] = base64.b64encode(spoken.audio).decode("ascii")
-        await self._broadcast("conv.spoken", payload)
+        outcome = "completed"
+        if self._playback is None:
+            await self._broadcast("conv.spoken", payload)
+        else:
+            try:
+                outcome = await self._playback(payload, self.wait_timeout_s)
+            except Exception as exc:
+                logger.warning("orchestrator.playback_failed", error_type=type(exc).__name__)
+                outcome = "unconfirmed"
+        if outcome == "unconfirmed":
+            self._playback_unconfirmed = True
         self.last_spoken_voice = spoken.voice
         self.last_spoken_text = spoken.text
         await self._transition(LEARNING, "reinforce + extract")
@@ -449,6 +464,13 @@ class Orchestrator:
                 {"node_ids": grounding, "edge_ids": [], "reason": "spoken"},
             )
         detail = "turn complete"
+        if outcome != "completed":
+            logger.warning("orchestrator.playback_incomplete", outcome=outcome)
+            detail += (
+                "; playback unconfirmed, microphone muted until backend restart"
+                if outcome == "unconfirmed"
+                else "; audio playback unavailable"
+            )
         try:
             if self.graph is not None:
                 grounded = set(grounding) & set(self._context_node_ids)
@@ -475,20 +497,20 @@ class Orchestrator:
                     await self._broadcast("graph.bloom", {"nodes": nodes, "edges": edges})
         except Exception as exc:
             logger.warning("orchestrator.learning_failed", error_type=type(exc).__name__)
-            detail = "turn complete; memory update unavailable"
+            detail += "; memory update unavailable"
         finally:
             if self.graph is not None:
                 try:
                     await self._broadcast("graph.snapshot", await self.snapshot())
                 except Exception as exc:
                     logger.warning("orchestrator.snapshot_failed", error_type=type(exc).__name__)
-                    detail = "turn complete; memory update unavailable"
-            await self._idle(detail)
+                    detail += "; memory update unavailable"
+            await self._idle(detail, rearm_mic=outcome != "unconfirmed")
 
-    async def _idle(self, detail: str) -> None:
+    async def _idle(self, detail: str, *, rearm_mic: bool = True) -> None:
         self.trial_id = None
         self._selection_future = None
-        self.speech.gate(False)
+        self.speech.gate(self._playback_unconfirmed or not rearm_mic)
         await self._transition(IDLE, detail)
 
     async def _intent_labels(self) -> list[str]:
