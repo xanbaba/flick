@@ -298,3 +298,31 @@ async def test_malformed_output_has_one_repair_and_remaining_deadline(
     assert len(requests) == 2
     assert requests[1].extensions["timeout"]["read"] == 6
     assert result.value is None and result.fallback_reason == "deadline_exceeded"
+
+
+async def test_expired_async_timeout_is_authoritative_when_clock_has_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Reproduce an event-loop timer firing before the monotonic deadline."""
+    calls = []
+
+    async def stall(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        await asyncio.Future()
+        raise AssertionError("unreachable")
+
+    transport(monkeypatch, stall)
+    clock = Clock()
+    config = load_config().generation.model_copy(update={"timeout_s": 0.01})
+    request_stage = LLMStage(
+        [GeminiLLMProvider("key", "test"), StaticLLMProvider()],
+        [CircuitBreaker(), CircuitBreaker()],
+        config,
+        "deadline",
+        clock=lambda: clock.now,
+        sleep=clock.sleep,
+    )
+    result = await run(request_stage)
+    assert request_stage.remaining() > 0
+    assert result.fallback_reason == "deadline_exceeded"
+    assert len(calls) == 1 and not clock.sleeps

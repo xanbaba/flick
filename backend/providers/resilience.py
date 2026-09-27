@@ -79,6 +79,8 @@ class LLMStage:
         self._json_mode = json_mode
         repaired = False
         for link, breaker in zip(self.links, self.breakers, strict=True):
+            if self.reason == "deadline_exceeded":
+                break
             if link.name == "static":
                 if self.served:
                     self.served(link.name)
@@ -126,8 +128,9 @@ class LLMStage:
             self.log.info(
                 "llm.attempt_started", provider=link.name, attempt=attempt, remaining_s=remaining
             )
+            timeout_scope = asyncio.timeout(remaining)
             try:
-                async with asyncio.timeout(remaining):
+                async with timeout_scope:
                     raw = await link.complete(
                         system,
                         prompt,
@@ -159,6 +162,10 @@ class LLMStage:
                     exc, (httpx.TransportError, TimeoutError)
                 )
                 self.reason = "provider_unavailable" if transient else "provider_error"
+                if timeout_scope.expired():
+                    # Event-loop clock resolution can fire a timer slightly early.
+                    # Its expiry is authoritative even if remaining() is positive.
+                    self.reason = "deadline_exceeded"
                 self.log.warning(
                     "llm.attempt_failed",
                     provider=link.name,
@@ -174,7 +181,8 @@ class LLMStage:
                         self.config.retry_delay_s + self.jitter(0, self.config.retry_jitter_s),
                     )
                     if (
-                        self.retries
+                        not timeout_scope.expired()
+                        and self.retries
                         and self.remaining() - delay >= self.config.min_attempt_budget_s
                     ):
                         self.retries -= 1
