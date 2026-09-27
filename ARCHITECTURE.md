@@ -625,6 +625,15 @@ class StimulusIntegrity(BaseModel):
 
 Envelope `{"type": ..., "ts": ..., "payload": {...}}`.
 
+The dashboard acknowledges a reply after audio ends or stops with
+`{type: "client.playback_complete", ts, playback_id, outcome}`. The outcome is
+`completed` or `failed`. Each reply has a unique playback ID; acknowledgments
+must match both that ID and a connection which received the reply. The backend
+waits for every receiving dashboard before rearming the microphone. The
+playback deadline uses the existing conversation wait timeout (30 seconds).
+The browser stops playback on that deadline or disconnection. Missing
+acknowledgments keep the microphone gated and produce an informative status.
+
 | `type` | Rate | Payload |
 |---|---|---|
 | `eeg.trace` | 4 Hz | `{channels, data, fs}` |
@@ -634,7 +643,7 @@ Envelope `{"type": ..., "ts": ..., "payload": {...}}`.
 | `conv.transcript` | event | `{speaker, text, partner_id, partner_name, confidence}` |
 | `conv.intents` | event | `{trial_id, labels}` |
 | `conv.candidates` | event | `{trial_id, candidates, grounding}` |
-| `conv.spoken` | event | `{text, voice, cached, latency_ms}` |
+| `conv.spoken` | event | `{text, voice, cached, latency_ms, audio_b64?, playback_id?, playback_timeout_s?}` |
 | `graph.snapshot` | on connect | `{nodes, edges}` |
 | `graph.activate` | event | `{node_ids, edge_ids, reason}` |
 | `graph.bloom` | event | `{nodes, edges}` |

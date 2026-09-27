@@ -40,7 +40,11 @@ export interface SensorStatus {
 // ---- 6.3 WebSocket dashboard → P3 (client.) ----
 export interface KeyPress { type: 'client.key_press'; ts: number; key: string } // "1".."5"
 export interface RequestSnapshot { type: 'client.request_snapshot'; ts: number }
-export type ClientMessage = KeyPress | RequestSnapshot;
+export interface PlaybackComplete {
+  type: 'client.playback_complete'; ts: number; playback_id: string;
+  outcome: 'completed' | 'failed';
+}
+export type ClientMessage = KeyPress | RequestSnapshot | PlaybackComplete;
 
 // ---- 6.4 ZMQ P3 → P2 (stim.) ----
 export interface ShowTargets { type: 'stim.show_targets'; ts: number; trial_id: string; labels: string[]; round: 'intent' | 'candidate' | 'speller'; cue_idx: number | null }
@@ -123,6 +127,8 @@ export interface WsPayloads {
     cached: boolean
     latency_ms: number
     audio_b64?: string
+    playback_id?: string
+    playback_timeout_s?: number
   };
   'graph.snapshot': { nodes: GraphNode[]; edges: GraphEdge[] };
   'graph.activate': { node_ids: string[]; edge_ids: string[]; reason: string };
