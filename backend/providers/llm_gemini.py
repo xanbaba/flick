@@ -38,6 +38,12 @@ class GeminiLLMProvider(LLMProvider):
     ) -> str:
         url = f"{_API_BASE}/{self._model}:generateContent"
         generation_config: dict[str, object] = {"maxOutputTokens": max_tokens}
+        # Short, latency-sensitive replies must leave room for visible JSON.
+        # Gemini's default thinking consumes the same output-token allowance.
+        if self._model.startswith("gemini-3"):
+            generation_config["thinkingConfig"] = {"thinkingLevel": "low"}
+        elif self._model.startswith("gemini-2.5-flash"):
+            generation_config["thinkingConfig"] = {"thinkingBudget": 0}
         if json_mode:
             generation_config["responseMimeType"] = "application/json"
 
@@ -48,12 +54,14 @@ class GeminiLLMProvider(LLMProvider):
         }
 
         async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.post(url, params={"key": self._api_key}, json=body)
+            response = await client.post(url, headers={"x-goog-api-key": self._api_key}, json=body)
         response.raise_for_status()
         payload = response.json()
         candidates = payload.get("candidates") or []
         if not candidates:
             raise RuntimeError("gemini returned no candidates")
+        if candidates[0].get("finishReason") == "MAX_TOKENS":
+            raise RuntimeError("gemini response truncated (MAX_TOKENS)")
         parts = candidates[0].get("content", {}).get("parts") or []
         if not parts:
             raise RuntimeError("gemini candidate has no content parts")
