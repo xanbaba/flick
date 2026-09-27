@@ -10,6 +10,7 @@ import { SpectatorQR } from '../components/SpectatorQR'
 import { TargetScores } from '../components/TargetScores'
 import { Transcript, type TranscriptLine } from '../components/Transcript'
 import type { MemoryBrain } from '../lib/brain'
+import type { ScanView } from '../lib/scan'
 import type { Streams } from '../lib/streams'
 import type { AnalyticsSummary, FsmState, SysStatusPayload, WsPayloads } from '../lib/types'
 import type { FlickSocket } from '../lib/ws'
@@ -29,6 +30,7 @@ export function Dashboard({
   labels,
   round,
   selectedIdx,
+  scan,
   spoken,
   fallback,
   grounding,
@@ -49,6 +51,7 @@ export function Dashboard({
   labels: string[]
   round: 'intent' | 'candidate' | 'speller' | null
   selectedIdx: number | null
+  scan: ScanView | null
   spoken: WsPayloads['conv.spoken'] | null
   fallback: boolean
   grounding: string[]
@@ -89,6 +92,8 @@ export function Dashboard({
         labels={labels}
         round={round}
         selectedIdx={selectedIdx}
+        scan={scan}
+        status={status}
         spoken={spoken}
         fallback={fallback}
         grounding={grounding}

@@ -4,6 +4,7 @@ import { StatusBar } from './components/StatusBar'
 import { api } from './lib/api'
 import { MemoryState } from './lib/memory'
 import { playReply, stopPlayback, unlockAudio } from './lib/playback'
+import { reduceScan, scanKey, type ScanView } from './lib/scan'
 import type { MemoryBrain } from './lib/brain'
 import { emptyStreams, type Streams } from './lib/streams'
 import type { AnalyticsSummary, FsmState, SysStatusPayload, WsMessage, WsPayloads } from './lib/types'
@@ -31,6 +32,7 @@ interface Dash {
   cost: WsPayloads['privacy.cost'] | null
   spectator: WsPayloads['spectator.link']
   graphNodes: number
+  scan: ScanView | null
 }
 
 const initial: Dash = {
@@ -52,6 +54,7 @@ const initial: Dash = {
   cost: null,
   spectator: { url: null, connected_viewers: 0 },
   graphNodes: 0,
+  scan: null,
 }
 
 export function App() {
@@ -60,6 +63,8 @@ export function App() {
   const brainRef = useRef<MemoryBrain | null>(null)
   const streams = useRef<Streams>(emptyStreams())
   const memory = useRef(new MemoryState())
+  const scanRef = useRef<ScanView | null>(null)
+  scanRef.current = dash.scan
 
   const onBrain = useCallback((brain: MemoryBrain | null) => {
     brainRef.current = brain
@@ -127,10 +132,13 @@ export function App() {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target
       if (target instanceof HTMLElement && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return
-      if (event.key >= '1' && event.key <= '5') {
-        unlockAudio()
-        socket.send({ type: 'client.key_press', ts: Date.now() / 1000, key: event.key })
-      }
+      if (target instanceof HTMLElement && target.tagName === 'BUTTON' && (event.key === 'Enter' || event.key === ' ')) return
+      const scan = scanRef.current
+      const key = scanKey(event.key, scan)
+      if (key === null) return
+      event.preventDefault()
+      unlockAudio()
+      socket.send({ type: 'client.key_press', ts: Date.now() / 1000, key, trial_id: scan?.trialId ?? null })
     }
     window.addEventListener('keydown', onKey)
     return () => {
@@ -170,6 +178,7 @@ export function App() {
           labels={dash.labels}
           round={dash.round}
           selectedIdx={dash.selectedIdx}
+          scan={dash.scan}
           spoken={dash.spoken}
           fallback={dash.fallback}
           grounding={dash.grounding}
@@ -184,6 +193,7 @@ export function App() {
 }
 
 function reduce(d: Dash, msg: WsMessage): Dash {
+  if (msg.type.startsWith('scan.')) return { ...d, scan: reduceScan(d.scan, msg) }
   switch (msg.type) {
     case 'sys.status':
       return { ...d, status: msg.payload }
