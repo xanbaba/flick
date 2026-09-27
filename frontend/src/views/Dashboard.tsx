@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { CandidatePanel } from '../components/CandidatePanel'
+import { AddContext } from '../components/AddContext'
 import { EegTraceView } from '../components/EegTrace'
 import { MemoryBrainView } from '../components/MemoryBrain'
 import { PrivacyPanel } from '../components/PrivacyPanel'
@@ -76,6 +77,10 @@ export function Dashboard({
 
   return (
     <main className="flex flex-1 flex-col gap-2.5 p-2.5">
+      <div className="flex items-center justify-between px-1">
+        <span className="font-mono text-[10.5px] uppercase tracking-widest text-muted">Memory & conversation</span>
+        <AddContext />
+      </div>
       <section className="grid gap-2.5 lg:min-h-[460px] lg:grid-cols-[minmax(0,1.5fr)_minmax(320px,1fr)]">
         <MemoryBrainView brainRef={brainRef} empty={empty} onReady={onReady} />
         <div className="flex min-h-0 flex-col gap-2.5">
