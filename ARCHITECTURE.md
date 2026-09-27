@@ -246,8 +246,8 @@ scan:
   poll_interval_s: 0.02
 database:
   memory_pool_max: 5
-  query_timeout_s: 0.3
-  write_timeout_s: 1.0
+  query_timeout_s: 2.0
+  write_timeout_s: 5.0
   connect_timeout_s: 10.0
   migration_timeout_s: 30.0
 graph:

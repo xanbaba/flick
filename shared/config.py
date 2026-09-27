@@ -199,8 +199,8 @@ class GraphConfig(BaseModel):
 class DatabaseConfig(BaseModel):
     model_config = ConfigDict(allow_inf_nan=False)
     memory_pool_max: int = Field(default=5, ge=1, le=20)
-    query_timeout_s: float = Field(default=0.3, gt=0)
-    write_timeout_s: float = Field(default=1.0, gt=0)
+    query_timeout_s: float = Field(default=2.0, gt=0)
+    write_timeout_s: float = Field(default=5.0, gt=0)
     connect_timeout_s: float = Field(default=10.0, gt=0)
     migration_timeout_s: float = Field(default=30.0, gt=0)
 
