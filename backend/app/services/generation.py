@@ -115,7 +115,12 @@ class GenerationService:
         return result.labels
 
     async def generate_intent_result(
-        self, context: str, partner_name: str, partner_relationship: str, utterance: str
+        self,
+        context: str,
+        partner_name: str,
+        partner_relationship: str,
+        utterance: str,
+        recent_context: str = "",
     ) -> IntentResult:
         prompt = _fill(
             self._intent_template,
@@ -123,6 +128,7 @@ class GenerationService:
             partner_name=partner_name,
             partner_relationship=partner_relationship,
             utterance=utterance,
+            recent_context=recent_context or "(no recent exchanges)",
         )
         result = await stage_for(self._llm, self._config, "intents").generate(
             _GENERIC_SYSTEM_PROMPT,
@@ -172,6 +178,7 @@ class GenerationService:
         partner_relationship: str,
         utterance: str,
         intent: str,
+        recent_context: str = "",
     ) -> CandidateResult:
         facts = [
             line.strip()[2:].strip()
@@ -189,6 +196,7 @@ class GenerationService:
             partner_relationship=partner_relationship,
             utterance=utterance,
             intent=intent,
+            recent_context=recent_context or "(no recent exchanges)",
         )
         valid_ids = set(context_node_ids)
 

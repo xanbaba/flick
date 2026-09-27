@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
@@ -35,6 +36,8 @@ async def run_memory(
     worker: MemoryWorker | None, fn: Callable[P, T], *args: P.args, **kwargs: P.kwargs
 ) -> T:
     """Standalone service callers remain supported; the app always supplies a worker."""
+    if inspect.iscoroutinefunction(fn):
+        return await fn(*args, **kwargs)
     if worker is None:
         return fn(*args, **kwargs)
     return await worker.run(fn, *args, **kwargs)

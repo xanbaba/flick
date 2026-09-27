@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable
 from typing import Protocol
 
 from backend.app.services.extraction import ExtractionResult
@@ -13,7 +13,9 @@ from backend.app.services.retrieval import RetrievalResult
 
 
 class RetrievalServiceProtocol(Protocol):
-    def retrieve(self, query_text: str, partner_id: str | None = None) -> RetrievalResult: ...
+    def retrieve(
+        self, query_text: str, partner_id: str | None = None
+    ) -> RetrievalResult | Awaitable[RetrievalResult]: ...
 
 
 class GenerationServiceProtocol(Protocol):
@@ -24,7 +26,12 @@ class GenerationServiceProtocol(Protocol):
     """
 
     async def generate_intent_result(
-        self, context: str, partner_name: str, partner_relationship: str, utterance: str
+        self,
+        context: str,
+        partner_name: str,
+        partner_relationship: str,
+        utterance: str,
+        recent_context: str = "",
     ) -> IntentResult: ...
 
     async def generate_candidates(
@@ -36,6 +43,7 @@ class GenerationServiceProtocol(Protocol):
         partner_relationship: str,
         utterance: str,
         intent: str,
+        recent_context: str = "",
     ) -> CandidateResult:
         """Returns validated sentences and their grounding node ids."""
         ...
@@ -45,7 +53,9 @@ class PartnerServiceProtocol(Protocol):
     @property
     def current(self) -> PartnerIdentification | None: ...
     async def identify(self, transcript: str) -> PartnerIdentification: ...
-    def set_override(self, partner_id: str | None) -> PartnerIdentification: ...
+    def set_override(
+        self, partner_id: str | None
+    ) -> PartnerIdentification | Awaitable[PartnerIdentification]: ...
 
 
 class ExtractionServiceProtocol(Protocol):

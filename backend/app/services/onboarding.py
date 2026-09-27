@@ -1,9 +1,8 @@
 """Onboarding seed (ARCHITECTURE.md section 14).
 
-Two LLM passes build a graph from a biography: the first asks for a
-balanced 40-60 nodes, the second enriches every Person and Activity.
+One bounded LLM pass builds supported facts without a node quota.
 Malformed entries are dropped by ``GraphService.seed_from_json``. When
-the provider is the offline static fallback (or both passes fail), the
+the provider is the offline static fallback (or generation fails), the
 committed Marcus fixture is used only for the unchanged demo biography.
 Custom-biography failures remain retryable without inserting substitute data.
 
@@ -25,6 +24,7 @@ from pydantic import BaseModel
 
 from backend.app.services.graph import GraphService
 from backend.app.services.persona import DEMO_BIO, DEMO_NAME
+from backend.app.services.tiger import TigerGraphService
 from backend.app.services.worker import MemoryWorker, run_memory
 from backend.providers.base import LLMProvider
 from backend.providers.registry import get_llm_provider
@@ -54,18 +54,9 @@ _GENERIC_SYSTEM_PROMPT = (
 )
 
 _FIRST_PASS = (
-    "This is the first pass. Produce 40 to 60 nodes with a balanced spread "
-    "of Person, Place, Thing, Activity, Need and Memory. Include the people, "
-    "places, objects, routines and needs the biography actually states."
-)
-
-_SECOND_PASS = (
-    "This is the expansion pass. You already drafted a first graph, included "
-    "below. Enrich every Person and every Activity with the related Things, "
-    "Places and Memories the biography supports. The combined graph should "
-    "land between 150 and 300 nodes. Do not repeat nodes that are already "
-    "in the first graph. Return only the new nodes and the new edges.\n\n"
-    "FIRST GRAPH:\n{first_graph}"
+    "Produce only facts supported by this biography. Use Person, Place, Thing, "
+    "Activity, Need and Memory where appropriate. There is no node quota; a small "
+    "accurate graph is preferable to invented details."
 )
 
 
@@ -116,6 +107,8 @@ class OnboardingService:
         self._template = (PROMPTS_DIR / "onboarding_seed.txt").read_text(encoding="utf-8")
 
     async def seed(self, bio: str, name: str) -> AsyncIterator[BloomBatch]:
+        if not name.strip() or not bio.strip():
+            raise ValueError("Name and biography must not be blank")
         payload = await self._payload_from_llm(bio, name)
         usable = [
             n
@@ -151,7 +144,10 @@ class OnboardingService:
                 },
                 *[n for n in usable if n.get("id") != "user"],
             ]
-        seeded = await run_memory(self._worker, self._graph.seed_from_json, payload)
+        if isinstance(self._graph, TigerGraphService):
+            seeded = await self._graph.seed_profile(payload, name, bio)
+        else:
+            seeded = await run_memory(self._worker, self._graph.seed_from_json, payload)
         nodes, edges = await run_memory(self._worker, self._graph.snapshot)
         by_id = {node.id: node for node in nodes}
         ordered = [by_id[node_id] for node_id in seeded.node_ids if node_id in by_id]
@@ -177,10 +173,7 @@ class OnboardingService:
         first = await self._pass(first_prompt)
         if not first or not first.get("nodes"):
             return {"nodes": [], "edges": []}
-        expansion = _SECOND_PASS.replace("{first_graph}", json.dumps(first))
-        second_prompt = _fill(self._template, pass_instructions=expansion, bio=text)
-        second = await self._pass(second_prompt)
-        return _merge(first, second or {"nodes": [], "edges": []})
+        return first
 
     async def _pass(self, prompt: str) -> dict[str, Any] | None:
         try:

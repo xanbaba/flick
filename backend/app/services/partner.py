@@ -14,6 +14,7 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from backend.app.services.graph import GraphService
+from backend.app.services.tiger import TigerGraphService
 from backend.app.services.worker import MemoryWorker, run_memory
 from backend.providers.base import LLMProvider
 from backend.providers.registry import get_llm_provider
@@ -94,6 +95,9 @@ class PartnerService:
             person.id for person in self._graph.people() if person.id != "user"
         }:
             raise ValueError("Partner must be a known person other than the user")
+        return self._apply_override(partner_id)
+
+    def _apply_override(self, partner_id: str | None) -> PartnerIdentification:
         self._override_id = partner_id
         if partner_id is None:
             if self._current is not None and self._current.overridden:
@@ -161,6 +165,10 @@ class PartnerService:
 
     def _people_block(self) -> str:
         people = self._graph.people()
+        return self._render_people(people)
+
+    @staticmethod
+    def _render_people(people: list) -> str:
         if not people:
             return "(nobody recorded yet)"
         lines = []
@@ -207,3 +215,17 @@ class PartnerService:
             reason=reason,
             overridden=False,
         )
+
+
+class TigerPartnerService(PartnerService):
+    _graph: TigerGraphService
+
+    async def set_override(self, partner_id: str | None) -> PartnerIdentification:
+        if partner_id is not None and partner_id not in {
+            p.id for p in await self._graph.people() if p.id != "user"
+        }:
+            raise ValueError("Partner must be a known person other than the user")
+        return self._apply_override(partner_id)
+
+    async def _people_block(self) -> str:
+        return self._render_people(await self._graph.people())

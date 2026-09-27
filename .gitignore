@@ -10,6 +10,7 @@ data/sessions/
 data/kuzu/
 data/audio_cache/
 data/calibration/
+data/memory-migration/
 models/
 *.npz
 *.wav

@@ -78,6 +78,12 @@ export function StatusBar({ conn, status }: { conn: ConnState; status: SysStatus
         <span>{status ? status.telemetry_dropped : '—'}</span>
       </span>
       <span className="flex-1" />
+      {status?.memory_available !== undefined && (
+        <span role="status" title={status.memory_error ?? undefined} className={status.memory_available ? 'text-accent' : 'text-red-300'}>
+          {status.memory_store === 'tiger' ? 'TIGER MEMORY' : status.memory_store === 'local_postgres' ? 'LOCAL POSTGRES MEMORY' : 'MEMORY'}
+          {status.memory_available ? ' · connected' : ' · unavailable'}
+        </span>
+      )}
       {status?.input_badge && (
         <span
           role="status"

@@ -191,8 +191,23 @@ class CalibrationConfig(BaseModel):
 
 
 class GraphConfig(BaseModel):
-    db_path: str
-    embedding_dim: int
+    db_path: str = "./data/kuzu"  # Legacy import/tests only; never runtime fallback.
+    profile_id: str = Field(default="user", min_length=1)
+    embedding_dim: Literal[384] = 384
+
+
+class DatabaseConfig(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
+    memory_pool_max: int = Field(default=5, ge=1, le=20)
+    query_timeout_s: float = Field(default=2.0, gt=0)
+    write_timeout_s: float = Field(default=5.0, gt=0)
+    connect_timeout_s: float = Field(default=10.0, gt=0)
+    migration_timeout_s: float = Field(default=30.0, gt=0)
+
+
+class ConversationConfig(BaseModel):
+    recent_exchanges: int = Field(default=6, ge=1, le=50)
+    context_max_chars: int = Field(default=12000, ge=256, le=100000)
 
 
 class RetrievalConfig(BaseModel):
@@ -266,6 +281,8 @@ class RecordingConfig(BaseModel):
 
 
 class AppConfig(BaseModel):
+    database: DatabaseConfig = Field(default_factory=DatabaseConfig)
+    conversation: ConversationConfig = Field(default_factory=ConversationConfig)
     sensor: SensorSettings = Field(default_factory=SensorSettings)
     scan: ScanConfig = Field(default_factory=ScanConfig)
     input: InputConfig
@@ -327,6 +344,8 @@ class EnvSettings(BaseSettings):
     embedding_provider: str = ""
 
     timescale_dsn: str = ""
+    tiger_dsn: str = ""
+    local_pg_dsn: str = ""
 
     spectator_url: str = ""
     spectator_token: str = ""

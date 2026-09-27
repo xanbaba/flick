@@ -176,7 +176,13 @@ def application(
     monkeypatch.setattr(SpeechService, "stop", AsyncMock())
 
     def create() -> FastAPI:
-        app = main.create_app()
+        # This suite preserves legacy Kuzu behavior; PostgreSQL acceptance runs
+        # separately against a real service, never through an implicit fallback.
+        app = main.create_app(
+            memory_factory=lambda: main.GraphService(
+                config.graph.db_path, config.graph.embedding_dim, embedder
+            )
+        )
         app.state.orchestrator._stim_address = None
         app.state.orchestrator.wait_timeout_s = 3.0
         return app

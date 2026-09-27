@@ -115,8 +115,19 @@ calibration:
   trial_s: 3.0
   rest_s: 1.0
 
+database:
+  memory_pool_max: 5
+  query_timeout_s: 2.0
+  write_timeout_s: 5.0
+  connect_timeout_s: 10.0
+  migration_timeout_s: 30.0
+
+conversation:
+  recent_exchanges: 6
+  context_max_chars: 12000
+
 graph:
-  db_path: ./data/kuzu
+  profile_id: user
   embedding_dim: 384
 
 retrieval:
