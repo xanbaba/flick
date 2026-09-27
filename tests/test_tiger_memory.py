@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import ssl
+from contextlib import asynccontextmanager
 from pathlib import Path
 from unittest.mock import AsyncMock
 
@@ -17,6 +19,8 @@ from backend.app.services.retrieval import RetrievalResult, TigerRetrievalServic
 from backend.app.services.tiger import (
     MemoryUnavailableError,
     TigerGraphService,
+    connection_options,
+    database_lease,
     prepare_node,
     vector_literal,
 )
@@ -29,6 +33,47 @@ from backend.app.services.worker import MemoryWorker, run_memory
 from backend.providers.embed_minilm import MiniLmEmbeddingProvider
 from scripts.import_kuzu_memory import export_kuzu
 from shared.config import ConversationConfig, DatabaseConfig, load_config
+
+
+def test_direct_tls_verifies_server_and_advertises_postgres(monkeypatch) -> None:
+    from unittest.mock import Mock
+
+    context = ssl.create_default_context()
+    wrapped = Mock(wraps=context)
+    factory = Mock(return_value=wrapped)
+    monkeypatch.setattr("backend.app.services.tiger.ssl.create_default_context", factory)
+    options = connection_options("postgresql://localhost/db?sslnegotiation=direct")
+    assert options == {"ssl": wrapped, "direct_tls": True}
+    factory.assert_called_once_with(cafile=None)
+    wrapped.set_alpn_protocols.assert_called_once_with(["postgresql"])
+    assert context.check_hostname
+    assert context.verify_mode == ssl.CERT_REQUIRED
+    assert connection_options("postgresql://localhost/db?sslmode=require") == {}
+
+
+def test_database_timeout_discards_connection_before_pool_cleanup() -> None:
+    from unittest.mock import Mock
+
+    tx = Mock(start=AsyncMock(), commit=AsyncMock(), rollback=AsyncMock())
+    conn = Mock(transaction=Mock(return_value=tx))
+
+    @asynccontextmanager
+    async def acquire():
+        try:
+            yield conn
+        finally:
+            conn.terminate.assert_called_once_with()
+
+    async def run() -> None:
+        for error in (TimeoutError(), asyncio.CancelledError()):
+            conn.terminate.reset_mock()
+            with pytest.raises(type(error)):
+                async with database_lease(Mock(acquire=acquire), transaction=True):
+                    raise error
+        tx.rollback.assert_not_awaited()
+        tx.commit.assert_not_awaited()
+
+    asyncio.run(run())
 
 
 def turn(index: int, **kwargs: object) -> ConversationTurn:

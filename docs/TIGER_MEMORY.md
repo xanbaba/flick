@@ -91,9 +91,20 @@ restart. LLM and audio providers are **labelled scripted acceptance fixtures**;
 these checks do not claim live model quality or headset success. Rehearse the
 vacation follow-up with the configured live generation provider before the demo.
 
-Verification on 2026-09-27: the real local PostgreSQL/pgvector check passed,
-including the full application restart flow and Kuzu import comparison. The
-configured Tiger endpoint resolved and accepted TCP connections, but did not
-answer PostgreSQL's initial SSL negotiation. Both asyncpg and containerized psql
-timed out. Cloud migration and acceptance therefore remain unverified until the
-service/network issue is resolved; local success is not a Tiger Cloud result.
+Verification on 2026-09-27: both local PostgreSQL/pgvector and actual Tiger Cloud
+acceptance passed, including the full application restart flow and Kuzu fixture
+import comparison. The Tiger run completed in 25.045 seconds using scripted
+language/audio providers. This does not establish live model/headset quality.
+The existing local profile was subsequently imported with 225 nodes and 332 edges;
+the importer compared retained data before committing and preserved a private
+rollback copy. No original biography file was supplied, so the imported profile's
+biography is blank while its existing graph facts remain intact.
+
+On the tested network, ordinary PostgreSQL SSL negotiation stalled. The working
+TIGER_DSN adds `sslnegotiation=direct&sslmode=verify-full`. The memory connector
+uses system certificate authorities, verifies the hostname, and advertises the
+required `postgresql` TLS ALPN protocol. An optional `sslrootcert` file is respected.
+Normal DSNs retain asyncpg's connection behavior. Timeouts discard their connection
+before cleanup, since asyncpg's separate cancellation connection can otherwise
+stall on SSL negotiation. Reads allow 2 seconds and writes 5 seconds; these are
+bounded configured budgets, not promises of measured latency.

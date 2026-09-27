@@ -10,6 +10,7 @@ import asyncio
 import hashlib
 import json
 import math
+import ssl
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -17,6 +18,7 @@ from contextvars import ContextVar
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, urlsplit
 
 import asyncpg
 import numpy as np
@@ -43,6 +45,41 @@ NODE_SELECT = "SELECT *, embedding::text AS vector FROM flick.nodes"
 
 class MemoryUnavailableError(RuntimeError):
     """Safe to expose; never includes credentials or SQL parameter values."""
+
+
+def connection_options(dsn: str) -> dict[str, Any]:
+    """Direct PostgreSQL TLS requires ALPN, which asyncpg does not set itself."""
+    query = parse_qs(urlsplit(dsn).query)
+    if query.get("sslnegotiation") != ["direct"]:
+        return {}
+    cafile = query.get("sslrootcert", [None])[-1]
+    context = ssl.create_default_context(cafile=cafile)
+    context.set_alpn_protocols(["postgresql"])
+    return {"ssl": context, "direct_tls": True}
+
+
+@asynccontextmanager
+async def database_lease(pool: Any, *, transaction: bool = False) -> AsyncIterator[Any]:
+    """Discard timed-out connections before pool cleanup can wait on cancellation."""
+    async with pool.acquire() as conn:
+        tx = conn.transaction() if transaction else None
+        try:
+            if tx is not None:
+                await tx.start()
+            yield conn
+            if tx is not None:
+                await tx.commit()
+        except (TimeoutError, asyncio.CancelledError):
+            conn.terminate()
+            raise
+        except BaseException:
+            if tx is not None:
+                try:
+                    await tx.rollback()
+                except BaseException:
+                    conn.terminate()
+                    raise
+            raise
 
 
 def vector_literal(vector: Any, dim: int = 384) -> str:
@@ -137,6 +174,7 @@ class TigerGraphService:
                 max_size=self.database.memory_pool_max,
                 timeout=self.database.connect_timeout_s,
                 command_timeout=self.database.query_timeout_s,
+                **await asyncio.to_thread(connection_options, self._dsn),
             )
             await self.ensure_schema()
             # Resolves the provider once, outside SQL and the event loop.
@@ -177,7 +215,7 @@ class TigerGraphService:
         sql = await asyncio.to_thread(path.read_text, encoding="utf-8")
         checksum = hashlib.sha256(sql.encode()).hexdigest()
         async with asyncio.timeout(self.database.migration_timeout_s):
-            async with self._pool.acquire() as conn, conn.transaction():
+            async with database_lease(self._pool, transaction=True) as conn:
                 # One migration runner at a time across backend processes.
                 await conn.execute(
                     "SELECT pg_advisory_xact_lock(hashtext('flick.memory.migrations'))",
@@ -214,7 +252,7 @@ class TigerGraphService:
             if conn is not None:
                 return await conn.fetch(sql, *args)
             async with asyncio.timeout(self.database.query_timeout_s):
-                async with self._pool.acquire() as conn:
+                async with database_lease(self._pool) as conn:
                     rows = await conn.fetch(sql, *args)
             if not self._uncertain:
                 self.available, self.error = True, None
@@ -231,7 +269,7 @@ class TigerGraphService:
             raise MemoryUnavailableError(self.error or "Reconcile memory before writing")
         try:
             async with asyncio.timeout(self.database.write_timeout_s):
-                async with self._pool.acquire() as conn, conn.transaction():
+                async with database_lease(self._pool, transaction=True) as conn:
                     token = self._connection.set(conn)
                     try:
                         await conn.execute(
@@ -257,7 +295,7 @@ class TigerGraphService:
         if self._pool is None:
             raise MemoryUnavailableError(self.error or "Memory unavailable")
         async with asyncio.timeout(self.database.write_timeout_s):
-            async with self._pool.acquire() as conn, conn.transaction():
+            async with database_lease(self._pool, transaction=True) as conn:
                 await conn.execute(
                     "SELECT pg_advisory_xact_lock(hashtext($1))", "flick:" + self.profile_id
                 )
