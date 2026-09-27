@@ -416,8 +416,8 @@ retrieval:
 generation:
   n_intents: 4
   n_candidates: 3
-  max_tokens: 400
-  timeout_s: 6.0
+  max_tokens: 2048
+  timeout_s: 12.0
 
 extraction:
   enabled: true
@@ -1063,7 +1063,7 @@ Context is rendered one fact per line:
 
 ## 12. Generation
 
-All calls go through `LLMProvider.complete(system, user, json_mode=...)` with a 6 s timeout and one retry on malformed JSON using a repair prompt. Second failure falls to the static provider.
+All calls go through `LLMProvider.complete(system, user, json_mode=...)` with the configured generation token allowance and timeout. The generation stage has a 12 s deadline, including one retry on malformed JSON using a repair prompt. The 2048-token allowance leaves room for thinking and the complete JSON response; Gemini 3 uses low thinking and Gemini 2.5 Flash disables thinking. A second failure or the stage deadline falls to the offline placeholder.
 
 ### 12.1 Intent labels
 
@@ -1542,7 +1542,7 @@ Cuts 2, 4 and 5 forfeit a sponsor track and cost the core demo nothing. Cuts 6�
 | Alpha false-triggers | Selections fire with eyes closed | Confirm no target at 10.0 Hz on `hi`; raise `margin_ratio` to 1.25 |
 | Telemetry queue saturating | Non-zero drop counter | Raise `eeg_downsample`. **Never raise `queue_maxsize`** — that trades a dropped row for a stalled pipeline. |
 | TimescaleDB unreachable | Consumer logs once per 30 s | Nothing else changes; telemetry is best-effort by design |
-| LLM timeout | 6 s elapsed | Chain to the next provider, then static. The turn always completes. |
+| LLM timeout | `generation.timeout_s` elapsed | Use the offline placeholder at the stage deadline. The turn always completes. |
 | STT garbage | Confidence < 0.5 or < 2 words | Discard; stay IDLE. Operator can use `POST /api/utterance`. |
 | ElevenLabs down | HTTP error | Cache → Piper → browser. Never silent. |
 | Network dies entirely | Provider dots red | Cached audio + static LLM keep a scripted demo running |

@@ -108,6 +108,8 @@ export interface SysStatusPayload {
 export interface PrivacyCostItem { provider: string; detail: string; usd: number } // UNSPECIFIED
 
 export interface WsPayloads {
+  // Generation token limits and deadlines come from server config; changing
+  // those limits does not change the intent or candidate payload shapes.
   'eeg.trace': { channels: string[]; data: number[][]; fs: number };
   'eeg.psd': { freqs: number[]; power: number[]; peaks: number[] };
   'bci.scores': Omit<TargetScores, 'type' | 'ts'>;
