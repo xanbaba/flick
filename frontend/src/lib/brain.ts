@@ -264,8 +264,11 @@ export class MemoryBrain {
     }
     const keep = new Set(nodes.map((n) => n.id))
     for (const id of [...this.nodes.keys()]) if (!keep.has(id)) this.nodes.delete(id)
+    const keepEdges = new Set(edges.map((edge) => edge.id))
     for (const [id, l] of [...this.links]) {
-      if (!this.nodes.has(endId(l.source)) || !this.nodes.has(endId(l.target))) this.links.delete(id)
+      if (!keepEdges.has(id) || !this.nodes.has(endId(l.source)) || !this.nodes.has(endId(l.target))) {
+        this.links.delete(id)
+      }
     }
     const { nodes: curN } = this.g.graphData()
     this.g.graphData({ nodes: curN.filter((n) => keep.has(n.id)), links: [...this.links.values()] })
@@ -280,9 +283,13 @@ export class MemoryBrain {
     const addN: BrainNode[] = []
     const addL: BrainLink[] = []
     let i = 0
+    let updated = false
     for (const raw of nodes) {
       const ex = this.nodes.get(raw.id)
       if (ex) {
+        updated = true
+        ex.label = raw.label
+        ex.last_accessed = raw.last_accessed
         if (raw.weight !== ex.weight) {
           ex.weight = raw.weight
           ex.__r = this.radius(raw.weight)
@@ -305,12 +312,19 @@ export class MemoryBrain {
       this.fxSet(n.id, 'bloom', now + i++ * stagger)
     }
     for (const raw of edges) {
-      if (this.links.has(raw.id) || !this.nodes.has(raw.source) || !this.nodes.has(raw.target)) continue
+      const existing = this.links.get(raw.id)
+      if (existing) {
+        updated = true
+        existing.weight = raw.weight
+        existing.kind = raw.kind
+        continue
+      }
+      if (!this.nodes.has(raw.source) || !this.nodes.has(raw.target)) continue
       const l: BrainLink = { ...raw }
       this.links.set(l.id, l)
       addL.push(l)
     }
-    if (!addN.length && !addL.length) return
+    if (!addN.length && !addL.length && !updated) return
     this.g.graphData({ nodes: [...cur.nodes, ...addN], links: [...cur.links, ...addL] })
     if (addL.length <= 40) setTimeout(() => addL.forEach((l) => this.emit(l)), 80)
     if (this.fitTimer) clearTimeout(this.fitTimer)

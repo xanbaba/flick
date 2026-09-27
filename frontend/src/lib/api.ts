@@ -14,7 +14,10 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     headers: body ? { 'Content-Type': 'application/json' } : undefined,
     body: body ? JSON.stringify(body) : undefined,
   })
-  if (!res.ok) throw new Error(`${method} ${path} → ${res.status}`)
+  if (!res.ok) {
+    const body = await res.json().catch(() => null) as { detail?: unknown } | null
+    throw new Error(typeof body?.detail === 'string' ? body.detail : `${method} ${path}: ${res.status}`)
+  }
   return res.json() as Promise<T>
 }
 

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { StatusBar } from './components/StatusBar'
 import { api } from './lib/api'
+import { MemoryState } from './lib/memory'
 import { playAudio, speak, unlockAudio } from './lib/playback'
 import type { MemoryBrain } from './lib/brain'
 import { emptyStreams, type Streams } from './lib/streams'
@@ -56,54 +57,61 @@ export function App() {
   const socketRef = useRef<FlickSocket | null>(null)
   const brainRef = useRef<MemoryBrain | null>(null)
   const streams = useRef<Streams>(emptyStreams())
-  const pending = useRef<{ snapshot: WsPayloads['graph.snapshot'] | null; blooms: WsPayloads['graph.bloom'][] }>({
-    snapshot: null,
-    blooms: [],
-  })
+  const memory = useRef(new MemoryState())
 
   const onBrain = useCallback((brain: MemoryBrain | null) => {
     brainRef.current = brain
     if (!brain) return
-    if (pending.current.snapshot) brain.setSnapshot(pending.current.snapshot)
-    for (const batch of pending.current.blooms) brain.bloom(batch)
-    pending.current.blooms = []
+    brain.setSnapshot(memory.current.snapshot())
   }, [])
 
   useEffect(() => {
     let alive = true
-    void api
-      .onboardingStatus()
-      .then((status) => {
-        if (alive) setDash((d) => ({ ...d, seeded: status.seeded, bootError: null, graphNodes: status.node_count }))
+    let statusRequest = 0
+    const refreshStatus = () => {
+      const request = ++statusRequest
+      void api.onboardingStatus().then((status) => {
+        if (alive && request === statusRequest) {
+          setDash((d) => ({ ...d, seeded: status.seeded, bootError: null }))
+        }
+      }).catch((err: unknown) => {
+        if (alive && request === statusRequest) {
+          setDash((d) => ({ ...d, bootError: err instanceof Error ? err.message : 'Backend unreachable' }))
+        }
       })
-      .catch((err: unknown) => {
-        if (alive) setDash((d) => ({ ...d, bootError: err instanceof Error ? err.message : 'Backend unreachable' }))
-      })
+    }
 
     const socket = new FlickSocket(
       wsUrl(),
       (msg) => {
         if (msg.type === 'graph.snapshot') {
-          pending.current.snapshot = msg.payload
+          memory.current.replace(msg.payload)
           brainRef.current?.setSnapshot(msg.payload)
         } else if (msg.type === 'graph.bloom') {
-          if (brainRef.current) brainRef.current.bloom(msg.payload)
-          else pending.current.blooms.push(msg.payload)
+          memory.current.merge(msg.payload)
+          brainRef.current?.bloom(msg.payload)
         } else if (msg.type === 'graph.activate') {
           brainRef.current?.activate(msg.payload)
           if (msg.payload.reason === 'grounding') brainRef.current?.glow(msg.payload.node_ids)
+        } else if (msg.type === 'conv.candidates') {
+          brainRef.current?.glow(msg.payload.grounding)
+        } else if (msg.type === 'fsm.state') {
+          ++statusRequest
         } else if (msg.type === 'conv.spoken') {
           if (msg.payload.voice === 'browser') speak(msg.payload.text)
           else if (msg.payload.audio_b64) playAudio(msg.payload.audio_b64, msg.payload.voice)
         }
-        setDash((d) => reduce(d, msg))
+        setDash((d) => ({ ...reduce(d, msg), graphNodes: memory.current.count }))
       },
       (msg) => {
         if (msg.type === 'eeg.trace') streams.current.eeg = msg.payload
         else if (msg.type === 'eeg.psd') streams.current.psd = msg.payload
         else if (msg.type === 'bci.scores') streams.current.scores = msg.payload
       },
-      (conn) => setDash((d) => ({ ...d, conn })),
+      (conn) => {
+        setDash((d) => ({ ...d, conn }))
+        if (conn.state === 'live') refreshStatus()
+      },
     )
     socketRef.current = socket
     socket.start()
@@ -174,7 +182,7 @@ function reduce(d: Dash, msg: WsMessage): Dash {
         ...d,
         fsm: msg.payload.state,
         detail: msg.payload.detail,
-        seeded: msg.payload.state === 'UNSEEDED' ? false : d.seeded,
+        seeded: msg.payload.state !== 'UNSEEDED',
       }
     case 'conv.transcript':
       return {
@@ -203,10 +211,6 @@ function reduce(d: Dash, msg: WsMessage): Dash {
       return { ...d, cost: msg.payload }
     case 'spectator.link':
       return { ...d, spectator: { url: msg.payload.url || null, connected_viewers: msg.payload.connected_viewers } }
-    case 'graph.snapshot':
-      return { ...d, graphNodes: msg.payload.nodes.length }
-    case 'graph.bloom':
-      return { ...d, graphNodes: d.graphNodes + msg.payload.nodes.length }
     default:
       return d
   }
