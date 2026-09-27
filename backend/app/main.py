@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, WebSocket
+from fastapi import FastAPI, HTTPException, Request, WebSocket
 from pydantic import BaseModel
 
 from backend.app.orchestrator import IDLE, UNSEEDED, Orchestrator, SeedConflictError
@@ -27,7 +27,7 @@ from backend.app.services.onboarding import OnboardingService, SeedUnavailableEr
 from backend.app.services.partner import PartnerService, TigerPartnerService
 from backend.app.services.retrieval import RetrievalService, TigerRetrievalService
 from backend.app.services.spectator import SpectatorService
-from backend.app.services.speech import SpeechService
+from backend.app.services.speech import MIN_CONFIDENCE, MIN_WORDS, SpeechService
 from backend.app.services.telemetry import TelemetryService
 from backend.app.services.tiger import MemoryUnavailableError, TigerGraphService
 from backend.app.services.tiger_learning import TigerLearningService
@@ -35,6 +35,7 @@ from backend.app.services.voice import VoiceService
 from backend.app.services.worker import MemoryWorker, run_memory
 from backend.app.ws import Hub, relay_sensor, serve
 from backend.providers.registry import get_embedding_provider, health_snapshot
+from backend.providers.stt_deepgram import DeepgramSTTProvider
 from inputs.base import InputSource
 from inputs.bci import BciInput
 from inputs.keyboard import KeyboardInput
@@ -123,7 +124,8 @@ def create_app(
     async def on_transcript(transcript: Any) -> None:
         await orchestrator_box["orch"].on_transcript(transcript)
 
-    speech = SpeechService(on_transcript)
+    speech = SpeechService(on_transcript, automatic_capture=False)
+    recording_lock = asyncio.Lock()
 
     async def broadcast(message_type: str, payload: dict[str, object]) -> None:
         await hub.broadcast(message_type, payload)
@@ -319,6 +321,45 @@ def create_app(
     async def utterance(body: UtteranceBody) -> dict[str, object]:
         await orchestrator.submit_utterance(body.text)
         return {"state": orchestrator.state, "trial_id": orchestrator.trial_id}
+
+    @app.post("/api/speech/transcribe")
+    async def transcribe_recording(request: Request) -> dict[str, object]:
+        if orchestrator.state != IDLE or speech.gated or recording_lock.locked():
+            raise HTTPException(409, "Wait until the current reply has finished.")
+        if not settings.env.deepgram_api_key:
+            raise HTTPException(503, "Deepgram is not configured on the backend.")
+        content_type = request.headers.get("content-type", "").split(";", 1)[0].lower()
+        if content_type not in {"audio/webm", "audio/ogg", "audio/mp4", "audio/wav"}:
+            raise HTTPException(415, "Unsupported recording format.")
+        async with recording_lock:
+            audio = bytearray()
+            async for chunk in request.stream():
+                if len(audio) + len(chunk) > 10 * 1024 * 1024:
+                    raise HTTPException(413, "Recording is too large; record a shorter sentence.")
+                audio.extend(chunk)
+            if not audio:
+                raise HTTPException(422, "The recording is empty. Please try again.")
+            try:
+                transcript = await DeepgramSTTProvider(
+                    settings.env.deepgram_api_key
+                ).transcribe_recording(bytes(audio), content_type)
+            except Exception as exc:
+                logger.warning("speech.recording_failed", error_type=type(exc).__name__)
+                raise HTTPException(
+                    502, "Deepgram could not transcribe the recording. Please try again."
+                ) from exc
+            if orchestrator.state != IDLE or speech.gated:
+                raise HTTPException(
+                    409, "The conversation changed; please record again when ready."
+                )
+            if (
+                len(transcript.text.split()) < MIN_WORDS
+                or not transcript.confidence >= MIN_CONFIDENCE
+            ):
+                raise HTTPException(
+                    422, "No clear sentence detected. Please record at least two words."
+                )
+            return {"text": transcript.text, "confidence": transcript.confidence}
 
     @app.post("/api/mode")
     async def mode(body: ModeBody) -> dict[str, str]:

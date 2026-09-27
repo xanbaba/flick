@@ -47,8 +47,9 @@ TranscriptHandler = Callable[[Transcript], Awaitable[None] | None]
 
 
 class SpeechService:
-    def __init__(self, on_transcript: TranscriptHandler) -> None:
+    def __init__(self, on_transcript: TranscriptHandler, *, automatic_capture: bool = True) -> None:
         self._on_transcript = on_transcript
+        self._automatic_capture = automatic_capture
         self._vad = webrtcvad.Vad(VAD_AGGRESSIVENESS)
         self._gated = True  # gated until start(): never armed by default
         self._stream: object | None = None
@@ -75,6 +76,8 @@ class SpeechService:
     async def start(self) -> None:
         self._loop = asyncio.get_running_loop()
         self._gated = False
+        if not self._automatic_capture:
+            return
         try:
             import sounddevice as sd
         except Exception as exc:

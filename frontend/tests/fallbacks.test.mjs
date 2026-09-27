@@ -7,7 +7,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import ts from 'typescript'
 
-async function component(name) {
+async function component(name, dependencies = {}) {
   const source = await readFile(new URL(`../src/components/${name}.tsx`, import.meta.url), 'utf8')
   const compiled = ts.transpileModule(source, {
     compilerOptions: {
@@ -18,12 +18,13 @@ async function component(name) {
   const require = createRequire(import.meta.url)
   runInNewContext(compiled, {
     exports,
-    require: (id) => id.startsWith('../lib/') ? {} : require(id),
+    require: (id) => dependencies[id] ?? (id.startsWith('../lib/') ? {} : require(id)),
   })
   return exports[name]
 }
 
-const CandidatePanel = await component('CandidatePanel')
+const SpeechRecorder = await component('SpeechRecorder')
+const CandidatePanel = await component('CandidatePanel', { './SpeechRecorder': { SpeechRecorder } })
 const PrivacyPanel = await component('PrivacyPanel')
 const StatusBar = await component('StatusBar')
 const props = {
@@ -35,9 +36,19 @@ test('fallback preserves the selected intent, disables unused targets and marks 
   const html = renderToStaticMarkup(createElement(CandidatePanel, props))
   assert.match(html, /Fallback reply: your selected intent, unchanged/)
   assert.match(html, /call Elena/)
-  assert.equal((html.match(/disabled=""/g) ?? []).length, 3)
+  const unused = (html.match(/<button\b[^>]*>[\s\S]*?<\/button>/g) ?? []).filter((button) => button.includes('Unused'))
+  assert.equal(unused.length, 3)
+  assert.ok(unused.every((button) => button.includes('disabled=""')))
   assert.match(html, /Cancel/)
   assert.doesNotMatch(html, /GROUNDED IN/)
+})
+
+test('manual recording is available only while the conversation is idle', () => {
+  const ready = renderToStaticMarkup(createElement(SpeechRecorder, { ready: true, onBusy: () => {} }))
+  assert.match(ready, /Record partner/)
+  assert.doesNotMatch(ready, /disabled=""/)
+  const busy = renderToStaticMarkup(createElement(SpeechRecorder, { ready: false, onBusy: () => {} }))
+  assert.match(busy, /disabled=""/)
 })
 
 test('intent fallbacks are explicit and generated replies have no fallback notice', () => {
