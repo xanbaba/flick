@@ -8,7 +8,6 @@ is changed.
 
 from __future__ import annotations
 
-import asyncio
 import json
 from pathlib import Path
 
@@ -18,6 +17,7 @@ from backend.app.services.graph import GraphService
 from backend.app.services.worker import MemoryWorker, run_memory
 from backend.providers.base import LLMProvider
 from backend.providers.registry import get_llm_provider
+from backend.providers.resilience import stage_for
 from shared.config import GenerationConfig, get_settings
 from shared.logging import get_logger
 
@@ -118,11 +118,14 @@ class PartnerService:
         people = await run_memory(self._worker, self._people_block)
         prompt = _fill(self._template, people=people, transcript=transcript)
         try:
-            async with asyncio.timeout(self._config.timeout_s):
-                raw = await self._complete(prompt)
-                parsed = self._parse(raw)
-                if parsed is None:
-                    parsed = self._parse(await self._complete(self._repair_prompt(prompt, raw)))
+            result = await stage_for(self._llm, self._config, "partner").generate(
+                _GENERIC_SYSTEM_PROMPT,
+                prompt,
+                self._parse,
+                self._repair_prompt,
+                max_tokens=self._config.max_tokens,
+            )
+            parsed = result.value
         except Exception as exc:
             logger.warning("partner.identification_failed", error_type=type(exc).__name__)
             return self._keep_previous("partner identification unavailable")
@@ -169,15 +172,6 @@ class PartnerService:
                 f"- {person.id}: {person.name}, {person.relationship}, address terms: {terms}"
             )
         return "\n".join(lines) if lines else "(nobody recorded yet)"
-
-    async def _complete(self, user_prompt: str) -> str:
-        return await self._llm.complete(
-            _GENERIC_SYSTEM_PROMPT,
-            user_prompt,
-            json_mode=True,
-            max_tokens=self._config.max_tokens,
-            timeout=self._config.timeout_s,
-        )
 
     @staticmethod
     def _repair_prompt(original_prompt: str, bad_response: str) -> str:

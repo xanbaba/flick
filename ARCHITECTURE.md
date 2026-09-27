@@ -1091,7 +1091,7 @@ Context is rendered one fact per line:
 
 ## 12. Generation
 
-All calls go through `LLMProvider.complete(system, user, json_mode=...)` with the configured generation token allowance and timeout. The generation stage has a 12 s deadline, including one retry on malformed JSON using a repair prompt. The 2048-token allowance leaves room for thinking and the complete JSON response; Gemini 3 uses low thinking and Gemini 2.5 Flash disables thinking. A second failure or the stage deadline falls to the offline placeholder.
+All calls go through `LLMProvider.complete(system, user, json_mode=...)` with the configured generation token allowance and timeout. Each generation stage has one 12 s deadline shared by all provider attempts, one transient retry and at most one JSON repair. Repair targets the provider that produced malformed model output; a static result never triggers repair. The 2048-token allowance leaves room for thinking and the complete JSON response; Gemini 3 uses low thinking and Gemini 2.5 Flash disables thinking. A second failure or the stage deadline falls to the offline placeholder.
 
 ### 12.1 Intent labels
 
@@ -1375,7 +1375,7 @@ class EmbeddingProvider(ABC):
     def embed(self, texts: list[str]) -> np.ndarray: ...
 ```
 
-`registry.py` builds a `FallbackChain` per slot from env vars. Every provider is lazily constructed on first use and wrapped in a circuit breaker: three consecutive failures marks it unhealthy for 30 s and the chain skips it. An explicit provider rate-limit response starts cooldown immediately, for at least 30 s or the provider's retry delay if longer; a JSON repair must not immediately repeat a rate-limited request. Health is reported in `sys.status`.
+`registry.py` builds a `FallbackChain` per slot from env vars. Every provider is lazily constructed on first use and wrapped in a circuit breaker: three consecutive failures marks it unhealthy for 30 s and the chain skips it. An explicit rate-limit response starts cooldown immediately for at least 30 s or the provider retry delay if longer. Transient LLM HTTP 500/502/503/504 and transport failures permit one delayed retry per stage when the remaining deadline allows it; a failed or skipped retry also starts immediate cooldown. Every subsequent request receives only the remaining budget. Completion provenance is request-specific, including explicit static fallback and failure reasons. Health is reported in `sys.status`.
 
 The last link in every chain is local, offline and never fails. That is what makes SW-13 real: the backend boots and serves a complete turn with no API keys, so frontend and graph work proceed while credentials are being sorted out.
 

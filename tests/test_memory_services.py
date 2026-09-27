@@ -69,6 +69,7 @@ async def test_demo_fallback_ignores_whitespace(graph: GraphService) -> None:
 
 async def test_valid_first_pass_survives_expansion_failure(graph: GraphService) -> None:
     llm = AsyncMock(spec=LLMProvider)
+    llm.name = "scripted"
     llm.complete.side_effect = [
         json.dumps(
             {
@@ -87,6 +88,7 @@ async def test_valid_first_pass_survives_expansion_failure(graph: GraphService) 
 async def test_extracted_memory_preserves_text(graph: GraphService) -> None:
     graph.upsert_node("Person", {"id": "user", "name": "Alex"})
     llm = AsyncMock(spec=LLMProvider)
+    llm.name = "scripted"
     llm.complete.return_value = json.dumps(
         {
             "nodes": [
@@ -113,6 +115,7 @@ async def test_partner_failure_keeps_previous_and_override_requires_person(
 ) -> None:
     graph.upsert_node("Person", {"id": "sam", "name": "Sam"})
     llm = AsyncMock(spec=LLMProvider)
+    llm.name = "scripted"
     llm.complete.side_effect = [
         '{"partner_id":"sam","confidence":0.9,"reason":"introduced himself"}',
         TimeoutError(),
@@ -169,6 +172,7 @@ async def test_override_wins_during_inflight_identification(graph: GraphService)
         return '{"partner_id":"sam","confidence":0.95,"reason":"name"}'
 
     llm = AsyncMock(spec=LLMProvider)
+    llm.name = "scripted"
     llm.complete.side_effect = identify
     service = PartnerService(graph, llm=llm)
     task = asyncio.create_task(service.identify("Sam here"))

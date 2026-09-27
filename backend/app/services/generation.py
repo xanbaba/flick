@@ -15,11 +15,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel
 
 from backend.providers.base import LLMProvider
 from backend.providers.registry import get_llm_provider
+from backend.providers.resilience import stage_for
 from shared.config import GenerationConfig, get_settings
 
 PROMPTS_DIR = Path(__file__).resolve().parents[2] / "prompts"
@@ -37,6 +39,12 @@ _GENERIC_SYSTEM_PROMPT = (
 _FALLBACK_INTENTS: tuple[str, str, str, str] = ("Yes", "Not now", "Tell me more", "Ask me")
 
 
+class IntentResult(BaseModel):
+    labels: list[str]
+    source: Literal["generated", "fallback"] = "generated"
+    fallback_reason: str | None = None
+
+
 class CandidateResult(BaseModel):
     """Section 12.2. Not part of shared/schemas.py -- this is what the
 
@@ -46,6 +54,8 @@ class CandidateResult(BaseModel):
 
     candidates: list[str]
     grounding: list[str]
+    source: Literal["generated", "fallback"] = "generated"
+    fallback_reason: str | None = None
 
 
 def _load_prompt(filename: str) -> str:
@@ -99,6 +109,14 @@ class GenerationService:
         partner_relationship: str,
         utterance: str,
     ) -> list[str]:
+        result = await self.generate_intent_result(
+            context, partner_name, partner_relationship, utterance
+        )
+        return result.labels
+
+    async def generate_intent_result(
+        self, context: str, partner_name: str, partner_relationship: str, utterance: str
+    ) -> IntentResult:
         prompt = _fill(
             self._intent_template,
             context=context,
@@ -106,17 +124,20 @@ class GenerationService:
             partner_relationship=partner_relationship,
             utterance=utterance,
         )
-        raw = await self._complete(prompt)
-        labels = self._parse_intents(raw)
-        if labels is not None:
-            return labels
-
-        raw_retry = await self._complete(self._repair_prompt(prompt, raw))
-        labels = self._parse_intents(raw_retry)
-        if labels is not None:
-            return labels
-
-        return list(_FALLBACK_INTENTS[: self._config.n_intents])
+        result = await stage_for(self._llm, self._config, "intents").generate(
+            _GENERIC_SYSTEM_PROMPT,
+            prompt,
+            self._parse_intents,
+            self._repair_prompt,
+            max_tokens=self._config.max_tokens,
+        )
+        if result.value is not None:
+            return IntentResult(labels=result.value)
+        return IntentResult(
+            labels=list(_FALLBACK_INTENTS[: self._config.n_intents]),
+            source="fallback",
+            fallback_reason=result.fallback_reason,
+        )
 
     def _parse_intents(self, raw: str) -> list[str] | None:
         try:
@@ -171,17 +192,18 @@ class GenerationService:
         )
         valid_ids = set(context_node_ids)
 
-        raw = await self._complete(prompt)
-        result = self._parse_candidates(raw, valid_ids)
-        if result is not None:
-            return result
-
-        raw_retry = await self._complete(self._repair_prompt(prompt, raw))
-        result = self._parse_candidates(raw_retry, valid_ids)
-        if result is not None:
-            return result
-
-        return self._fallback_candidates(intent, context, context_node_ids)
+        result = await stage_for(self._llm, self._config, "candidates").generate(
+            _GENERIC_SYSTEM_PROMPT,
+            prompt,
+            lambda raw: self._parse_candidates(raw, valid_ids),
+            self._repair_prompt,
+            max_tokens=self._config.max_tokens,
+        )
+        if result.value is not None:
+            return result.value
+        return self._fallback_candidates(intent, context, context_node_ids).model_copy(
+            update={"source": "fallback", "fallback_reason": result.fallback_reason}
+        )
 
     def _parse_candidates(self, raw: str, valid_ids: set[str]) -> CandidateResult | None:
         try:
@@ -250,15 +272,6 @@ class GenerationService:
     # ---------------------------------------------------------------- #
     # Shared plumbing
     # ---------------------------------------------------------------- #
-
-    async def _complete(self, user_prompt: str) -> str:
-        return await self._llm.complete(
-            _GENERIC_SYSTEM_PROMPT,
-            user_prompt,
-            json_mode=True,
-            max_tokens=self._config.max_tokens,
-            timeout=self._config.timeout_s,
-        )
 
     @staticmethod
     def _repair_prompt(original_prompt: str, bad_response: str) -> str:
