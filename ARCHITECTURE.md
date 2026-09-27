@@ -14,8 +14,9 @@ the repository had a working keyboard/SSVEP-oriented conversation pipeline and
 Kuzu memory. Zahid's sensor branch now supplies Cortex acquisition, baseline
 calibration, and clench/eyes-closed detectors. Its sensor messages have shared
 Python/TypeScript contracts accepted by the bus, and both processes share the
-sensor settings model. The input adapter, scan controller, and conversation UI
-still need integration. Tiger storage and explicit recent-conversation context
+sensor settings model. The BCI adapter and shared scan controller now connect to
+the backend selection lifecycle. The conversation UI still needs to render scan
+events and send trial-correlated keyboard controls. Tiger storage and recent context
 remain unimplemented. Passing
 sensor tests does not establish an integrated live conversation.
 
@@ -378,6 +379,20 @@ disconnect keeps capture gated until restart, as implemented. Preserve manual
 partner text for recovery. Playback deadline remains separate from scan timeout.
 
 ## 7. Live input and scan
+
+`inputs/scan.py` owns trial/highlight state and monotonic timeout/confirmation
+timing. `inputs/bci.py` consumes sensor messages with bounded nonblocking ZMQ
+reads, exposes actual readiness, and yields `Selection` only after confirmation.
+`KeyboardInput(n_targets=4, config=...)` uses the same controller and requires
+matching trial IDs. The existing five-slot numeric keyboard UI remains compatible
+until its frontend migration; it is not the completed four-tile product.
+
+The backend factory supports `input.adapter: bci` with four slots, publishes
+scan events, restores active highlight on reconnect, and closes input on timeout,
+round exit and stop. Neither adapter owns a stimulus/control publisher. Consumers
+must run both `selections()` and `events()`; the orchestrator owns those listeners.
+BCI badges distinguish live muscle/alpha control from synthetic/replay inputs.
+Actual headset reliability still requires rehearsal and the P1 fixes below.
 
 Verify Cortex authorization/session/subscription behavior against the installed
 tooling. Complete eyes-open baseline calibration, then verify both actions before

@@ -34,10 +34,11 @@ from backend.app.services.worker import MemoryWorker, run_memory
 from backend.app.ws import Hub, relay_sensor, serve
 from backend.providers.registry import get_embedding_provider, health_snapshot
 from inputs.base import InputSource
+from inputs.bci import BciInput
 from inputs.keyboard import KeyboardInput
 from inputs.replay import ReplayInput
 from inputs.ssvep import SsvepInput
-from shared.config import get_settings
+from shared.config import AppConfig, get_settings
 from shared.logging import configure_logging, get_logger
 
 logger = get_logger(__name__)
@@ -76,9 +77,15 @@ class PurgeBody(BaseModel):
     scope: str
 
 
-def build_input(adapter: str, n_targets: int) -> InputSource:
+def build_input(adapter: str, n_targets: int, config: AppConfig | None = None) -> InputSource:
+    if adapter == "bci":
+        return BciInput(
+            config=config.scan if config else None, sensor=config.sensor if config else None
+        )
     if adapter == "keyboard":
-        return KeyboardInput(n_targets=n_targets)
+        return KeyboardInput(
+            n_targets=n_targets, config=config.scan if config and n_targets == 4 else None
+        )
     if adapter == "ssvep":
         return SsvepInput(n_targets=n_targets)
     if adapter == "replay":
@@ -104,7 +111,7 @@ def create_app() -> FastAPI:
         voice_id=settings.env.elevenlabs_voice_id or None,
     )
     input_box: dict[str, InputSource] = {
-        "source": build_input(config.input.adapter, config.mode.targets)
+        "source": build_input(config.input.adapter, config.mode.targets, config)
     }
 
     orchestrator_box: dict[str, Orchestrator] = {}
@@ -127,6 +134,7 @@ def create_app() -> FastAPI:
         generation=GenerationService(config=config.generation),
         stim_address=STIM_ADDRESS,
         playback=hub.play,
+        wait_timeout_s=config.scan.trial_timeout_s + config.scan.hold_after_select_s,
     )
     orchestrator_box["orch"] = orchestrator
 
@@ -134,14 +142,15 @@ def create_app() -> FastAPI:
 
     def status_payload() -> dict[str, object]:
         source = orchestrator.input
+        input_status = source.status()
         return {
             "input_source": source.name,
             "input_badge": source.badge,
-            "source": config.mode.source,
-            "connected": bool(
-                source.status().get("connected", source.status().get("started", False))
-            ),
+            "source": input_status.get("source", config.mode.source),
+            "connected": bool(input_status.get("connected", input_status.get("started", False))),
             "replay": source.name == "replay",
+            "ready": input_status.get("ready"),
+            "blocked_reason": input_status.get("blocked_reason"),
             "profile": config.stimulus.profile,
             "measured_refresh_hz": None,
             "providers": health_snapshot(),
@@ -276,7 +285,7 @@ def create_app() -> FastAPI:
         if orchestrator.state not in (IDLE, UNSEEDED):
             return {"adapter": orchestrator.input.name, "error": "busy"}
         try:
-            replacement = build_input(body.adapter, config.mode.targets)
+            replacement = build_input(body.adapter, config.mode.targets, config)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
         try:

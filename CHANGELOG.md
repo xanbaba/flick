@@ -4,6 +4,20 @@ Changes to `ARCHITECTURE.md`, newest first. Each entry lists what changed, why, 
 
 ---
 
+## BCI step-scan implementation — 2026-09-27
+
+Add the shared scan state machine and Cortex input adapter. Fresh calibrated
+readiness, event identity/source time, trial boundaries and observed release gate
+input. Same-sample events within the bounded collection window prefer select.
+Timeout, confirmation hold, Cancel and disabled-slot behavior have executable tests.
+
+Keyboard uses the same controller; its old five-slot numeric interface remains
+compatible. Four-slot scanning requires trial IDs. The backend factory, scan event
+forwarding, reconnect snapshot and timeout/stop lifecycle are connected. Frontend
+highlight rendering and real headset acceptance remain separate delivery work.
+
+---
+
 ## Scan input contract — 2026-09-27
 
 Add bounded scan timing/freshness configuration, optional keyboard trial identity

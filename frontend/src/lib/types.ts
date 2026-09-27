@@ -121,7 +121,9 @@ export interface GraphEdge { id: string; source: string; target: string; kind: s
 export interface SysStatusPayload {
   input_source: string;
   input_badge: string | null; // rendered high-contrast whenever non-null (§7.6)
-  source: 'cyton' | 'synthetic' | 'replay';
+  source: 'emotiv' | 'cyton' | 'synthetic' | 'replay';
+  ready?: boolean | null;
+  blocked_reason?: string | null;
   connected: boolean;
   replay: boolean;
   profile: 'auto' | 'hi' | 'lo';

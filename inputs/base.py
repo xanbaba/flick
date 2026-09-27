@@ -39,3 +39,7 @@ class InputSource(ABC):
     def status(self) -> dict:
         """Adapter-specific health, merged into sys.status."""
         return {}
+
+    def close_trial(self, reason: str = "closed") -> None:
+        """Disarm the current interaction; legacy adapters may override separately."""
+        return None
