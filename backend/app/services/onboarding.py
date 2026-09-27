@@ -1,9 +1,8 @@
 """Onboarding seed (ARCHITECTURE.md section 14).
 
-Two LLM passes build a graph from a biography: the first asks for a
-balanced 40-60 nodes, the second enriches every Person and Activity.
+One bounded LLM pass builds supported facts without a node quota.
 Malformed entries are dropped by ``GraphService.seed_from_json``. When
-the provider is the offline static fallback (or both passes fail), the
+the provider is the offline static fallback (or generation fails), the
 committed Marcus fixture is used only for the unchanged demo biography.
 Custom-biography failures remain retryable without inserting substitute data.
 

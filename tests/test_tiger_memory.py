@@ -238,7 +238,8 @@ def test_partner_experience_cannot_be_written_as_users_experience(
         )
         right = wrong.model_copy(update={"speaker": "partner"})
         nodes, edges, _ = await learning._prepare(([wrong, right], []), exchange)
-        assert len(nodes) == 1 and not edges
+        assert len(nodes) == 1
+        assert edges == [{"kind": "INVOLVES", "source": nodes[0]["id"], "target": "sam"}]
         attributes = json.loads(nodes[0]["attributes"])
         assert attributes["source_subject"] == "sam"
         assert attributes["text"] == 'Sam (partner) said: "I went to Rome."'

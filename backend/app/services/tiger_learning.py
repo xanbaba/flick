@@ -222,6 +222,12 @@ class TigerLearningService(ExtractionService):
                 node_id = node["id"]
             resolved[(proposal.speaker, proposal.name)] = node_id
             kinds[node_id] = proposal.kind
+            if proposal.kind == "Memory" and subjects[proposal.speaker] is not None:
+                # The verified quote establishes who this memory involves. Keep
+                # that relationship in the graph, not just in JSON provenance.
+                edges.append(
+                    {"kind": "INVOLVES", "source": node_id, "target": subjects[proposal.speaker]}
+                )
         for edge in parsed[1]:
             target = resolved.get((edge.speaker, edge.target_name))
             if (
