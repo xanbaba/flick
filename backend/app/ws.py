@@ -106,7 +106,9 @@ async def relay_sensor(hub: Hub, address: str) -> None:
     subscriber = Subscriber(address)
     try:
         while True:
-            if subscriber.poll(50):
+            # Non-blocking poll: a blocking poll here stalls the whole event
+            # loop (every WS send and the BCI input's 20 ms polling).
+            if subscriber.poll(0):
                 try:
                     message = subscriber.recv()
                 except ValidationError:
@@ -125,7 +127,7 @@ async def relay_sensor(hub: Hub, address: str) -> None:
                 elif isinstance(message, TargetScores):
                     await hub.broadcast("bci.scores", message.model_dump())
             else:
-                await asyncio.sleep(0)
+                await asyncio.sleep(0.02)
     finally:
         subscriber.close()
 
