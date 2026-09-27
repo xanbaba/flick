@@ -1318,7 +1318,7 @@ class EmbeddingProvider(ABC):
     def embed(self, texts: list[str]) -> np.ndarray: ...
 ```
 
-`registry.py` builds a `FallbackChain` per slot from env vars. Every provider is lazily constructed on first use and wrapped in a circuit breaker: three consecutive failures marks it unhealthy for 30 s and the chain skips it. Health is reported in `sys.status`.
+`registry.py` builds a `FallbackChain` per slot from env vars. Every provider is lazily constructed on first use and wrapped in a circuit breaker: three consecutive failures marks it unhealthy for 30 s and the chain skips it. An explicit provider rate-limit response starts cooldown immediately, for at least 30 s or the provider's retry delay if longer; a JSON repair must not immediately repeat a rate-limited request. Health is reported in `sys.status`.
 
 The last link in every chain is local, offline and never fails. That is what makes SW-13 real: the backend boots and serves a complete turn with no API keys, so frontend and graph work proceed while credentials are being sorted out.
 

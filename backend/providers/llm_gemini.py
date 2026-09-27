@@ -17,6 +17,7 @@ import httpx
 
 from backend.app.services.cost import outbound
 from backend.providers.base import LLMProvider
+from backend.providers.rate_limits import rate_limit_error
 from shared.logging import get_logger
 
 _API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
@@ -74,6 +75,16 @@ class GeminiLLMProvider(LLMProvider):
             raise
         except httpx.HTTPError as exc:
             failed_response = getattr(exc, "response", None)
+            if failed_response is not None and failed_response.status_code == 429:
+                limited = rate_limit_error(failed_response)
+                request_log.warning(
+                    "gemini.rate_limited",
+                    elapsed_s=time.monotonic() - started,
+                    http_status=429,
+                    retry_after_s=limited.retry_after_s,
+                    quota_ids=limited.quota_ids,
+                )
+                raise limited from exc
             request_log.warning(
                 "gemini.request_failed",
                 elapsed_s=time.monotonic() - started,

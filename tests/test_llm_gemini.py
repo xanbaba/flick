@@ -10,6 +10,7 @@ import pytest
 from structlog.testing import capture_logs
 
 from backend.providers.llm_gemini import GeminiLLMProvider
+from backend.providers.rate_limits import RateLimitError
 
 
 @pytest.mark.parametrize(
@@ -106,10 +107,10 @@ async def test_rate_limit_logs_status_without_credentials(
     client = httpx.AsyncClient(transport=httpx.MockTransport(lambda request: httpx.Response(429)))
     monkeypatch.setattr(httpx, "AsyncClient", lambda **kwargs: client)
     provider = GeminiLLMProvider("private-key", "gemini-3.8-flash")
-    with capture_logs() as logs, pytest.raises(httpx.HTTPStatusError):
+    with capture_logs() as logs, pytest.raises(RateLimitError):
         await provider.complete("private-system", "private-utterance")
     failure = logs[-1]
-    assert failure["event"] == "gemini.request_failed"
+    assert failure["event"] == "gemini.rate_limited"
     assert failure["http_status"] == 429
-    assert failure["error_type"] == "HTTPStatusError"
+    assert failure["retry_after_s"] is None
     assert "private-" not in json.dumps(logs)
