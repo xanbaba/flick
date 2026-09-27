@@ -114,6 +114,8 @@ class Orchestrator:
         self._turn_lock = asyncio.Lock()
         self._stim: Publisher | None = None
         self._seeded = False
+        self._user_name = ""
+        self._context_node_ids: list[str] = []
 
     async def start(self) -> None:
         await self.input.start()
@@ -158,6 +160,7 @@ class Orchestrator:
             # to a graph that does not exist.
             payload = {"seeded": True, "node_count": 0}
         self._seeded = True
+        self._user_name = name
         await self._transition(IDLE, f"seeded as {name}")
         self.speech.gate(False)
         return payload
@@ -245,6 +248,7 @@ class Orchestrator:
                 partner_name = current.name
                 partner_relationship = current.relationship
         context = ""
+        self._context_node_ids = []
         activated: list[str] = []
         if self.retrieval is not None:
             result = await self.retrieval.retrieve(
@@ -253,6 +257,7 @@ class Orchestrator:
                 select_k=self.config.retrieval.select_k,
             )
             context = result.context_text
+            self._context_node_ids = [node.id for node in result.nodes]
             activated = result.activated_node_ids
         self._context = context
         self._partner_name = partner_name
@@ -377,7 +382,7 @@ class Orchestrator:
         if self.generation is not None:
             try:
                 labels = await asyncio.wait_for(
-                    self.generation.intent_labels(
+                    self.generation.generate_intents(
                         self._context,
                         self._partner_name,
                         self._partner_relationship,
@@ -386,8 +391,15 @@ class Orchestrator:
                     timeout=self.config.generation.timeout_s,
                 )
             except Exception as exc:
-                logger.warning("orchestrator.intent_gen_fell_through", error=str(exc))
+                logger.warning(
+                    "orchestrator.intent_gen_fell_through",
+                    error=str(exc) or type(exc).__name__,
+                    error_type=type(exc).__name__,
+                    timeout_s=self.config.generation.timeout_s,
+                )
                 labels = []
+            if len(labels) < n_semantic:
+                labels = _FALLBACK_LABELS[:n_semantic]
         if len(labels) < n_semantic:
             labels = await self._offline_json_list("labels", n_semantic, _FALLBACK_LABELS)
         return labels[:n_semantic] + ["Cancel"]
@@ -396,21 +408,30 @@ class Orchestrator:
         n = self.config.generation.n_candidates
         if self.generation is not None:
             try:
-                candidates, grounding = await asyncio.wait_for(
-                    self.generation.candidate_sentences(
-                        self._context,
-                        self._partner_name,
-                        self._partner_relationship,
-                        self._utterance,
-                        self._intent,
+                result = await asyncio.wait_for(
+                    self.generation.generate_candidates(
+                        user_name=self._user_name,
+                        context=self._context,
+                        context_node_ids=self._context_node_ids,
+                        partner_name=self._partner_name,
+                        partner_relationship=self._partner_relationship,
+                        utterance=self._utterance,
+                        intent=self._intent,
                     ),
                     timeout=self.config.generation.timeout_s,
                 )
+                candidates, grounding = result.candidates, result.grounding
             except Exception as exc:
-                logger.warning("orchestrator.candidate_gen_fell_through", error=str(exc))
+                logger.warning(
+                    "orchestrator.candidate_gen_fell_through",
+                    error=str(exc) or type(exc).__name__,
+                    error_type=type(exc).__name__,
+                    timeout_s=self.config.generation.timeout_s,
+                )
                 candidates, grounding = [], []
             if len(candidates) >= n:
                 return candidates[:n] + ["Cancel"], grounding
+            return _FALLBACK_CANDIDATES[:n] + ["Cancel"], []
         candidates = await self._offline_json_list("candidates", n, _FALLBACK_CANDIDATES)
         return candidates[:n] + ["Cancel"], []
 
@@ -433,7 +454,11 @@ class Orchestrator:
             if isinstance(values, list) and len(values) >= n:
                 return [str(item) for item in values[:n]]
         except Exception as exc:
-            logger.warning("orchestrator.offline_llm_unusable", error=str(exc))
+            logger.warning(
+                "orchestrator.offline_llm_unusable",
+                error=str(exc) or type(exc).__name__,
+                error_type=type(exc).__name__,
+            )
         return fallback[:n]
 
     async def _speller_loop(self) -> None:

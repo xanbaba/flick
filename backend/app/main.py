@@ -1,10 +1,8 @@
 """FastAPI entry point for P3 (ARCHITECTURE.md sections 3.2 and 6.8).
 
 Boots with an empty .env: providers resolve to their offline last
-links, and the knowledge-layer services (graph, retrieval, generation,
-extraction, partner, onboarding, speller) are optional. When they are
-not installed yet, the orchestrator uses the placeholders in
-orchestrator.py so a keyboard turn still runs end to end.
+links. Generation uses the prompt-backed service; the remaining
+knowledge-layer services are optional until wired into the app.
 """
 
 from __future__ import annotations
@@ -21,6 +19,7 @@ from backend.app.orchestrator import IDLE, UNSEEDED, Orchestrator
 from backend.app.services.analytics import AnalyticsService
 from backend.app.services.cost import CostTracker
 from backend.app.services.cost import flows as recorded_flows
+from backend.app.services.generation import GenerationService
 from backend.app.services.spectator import SpectatorService
 from backend.app.services.speech import SpeechService
 from backend.app.services.telemetry import TelemetryService
@@ -123,6 +122,7 @@ def create_app() -> FastAPI:
         speech=speech,
         cost=CostTracker(config.privacy.price_table),
         config=config,
+        generation=GenerationService(config=config.generation),
         stim_address=STIM_ADDRESS if config.input.adapter == "keyboard" else None,
     )
     orchestrator_box["orch"] = orchestrator

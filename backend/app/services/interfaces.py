@@ -25,6 +25,7 @@ from typing import Protocol
 import numpy as np
 from pydantic import BaseModel
 
+from backend.app.services.generation import CandidateResult
 from shared.schemas import GraphEdge, GraphNode
 
 # --------------------------------------------------------------------------
@@ -117,19 +118,21 @@ class GenerationServiceProtocol(Protocol):
     instantiates a provider directly.
     """
 
-    async def intent_labels(
+    async def generate_intents(
         self, context: str, partner_name: str, partner_relationship: str, utterance: str
     ) -> list[str]: ...
 
-    async def candidate_sentences(
+    async def generate_candidates(
         self,
+        user_name: str,
         context: str,
+        context_node_ids: list[str],
         partner_name: str,
         partner_relationship: str,
         utterance: str,
         intent: str,
-    ) -> tuple[list[str], list[str]]:
-        """Returns (candidates, grounding_node_ids)."""
+    ) -> CandidateResult:
+        """Returns validated sentences and their grounding node ids."""
         ...
 
 
