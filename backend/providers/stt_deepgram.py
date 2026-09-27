@@ -26,16 +26,30 @@ class DeepgramSTTProvider(STTProvider):
 
     @outbound("stt", "Deepgram", "microphone audio")
     async def transcribe(self, pcm: bytes, sample_rate: int) -> Transcript:
+        return await self._request(
+            pcm,
+            "application/octet-stream",
+            {"encoding": "linear16", "sample_rate": sample_rate, "channels": 1},
+        )
+
+    @outbound("stt", "Deepgram", "user-recorded microphone audio")
+    async def transcribe_recording(self, audio: bytes, content_type: str) -> Transcript:
+        """Containerized browser audio carries its own encoding and sample rate."""
+        return await self._request(audio, content_type, {})
+
+    async def _request(
+        self, audio: bytes, content_type: str, params: dict[str, str | int]
+    ) -> Transcript:
         headers = {
             "Authorization": f"Token {self._api_key}",
-            "Content-Type": "application/octet-stream",
+            "Content-Type": content_type,
         }
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(
                 _URL,
                 headers=headers,
-                params={"encoding": "linear16", "sample_rate": sample_rate, "channels": 1},
-                content=pcm,
+                params=params,
+                content=audio,
             )
         response.raise_for_status()
         payload = response.json()

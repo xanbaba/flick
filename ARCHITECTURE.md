@@ -585,7 +585,18 @@ transient retry, JSON repair and explicit fallback provenance. Keep provider
 chains; do not rewrite them for this migration. Automatic partner identification
 may remain if working; known-person override suffices.
 
-Keep 16 kHz mono sounddevice capture and webrtcvad with existing 30 ms frames,
+Manual-recording revision: the production frontend owns microphone capture through
+Record partner / Stop & send. Automatic backend sounddevice capture is disabled
+in this app path so background noise cannot launch competing turns. Browser
+WebM/Opus, Ogg/Opus or MP4 audio is sent to `/api/speech/transcribe`; the backend
+keeps the Deepgram key private and sends containerized audio without raw-PCM
+encoding parameters. Successful transcripts enter the existing utterance flow.
+Capture stops and releases tracks before upload; new recordings are unavailable
+during a conversation turn. Recordings stay in memory, stop after 60 seconds,
+and uploads are capped at 10 MiB. Errors are visible and retryable. Text input,
+selection, generation, speech playback and Tiger learning remain unchanged.
+
+Retain the optional 16 kHz mono sounddevice capture and webrtcvad with existing 30 ms frames,
 three-frame speech start, and 25-frame silence end. The 400 ms minimum checks
 utterance duration excluding terminal silence; short noises cannot pass merely
 because 750 ms of silence was appended. Retain the two-word filter and actual STT

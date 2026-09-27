@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { SpeechRecorder } from './SpeechRecorder'
 
 import { api } from '../lib/api'
 import { unlockAudio } from '../lib/playback'
@@ -47,6 +48,7 @@ export function CandidatePanel({
 }) {
   const [prompt, setPrompt] = useState('')
   const [sendError, setSendError] = useState<string | null>(null)
+  const [recordingBusy, setRecordingBusy] = useState(false)
 
   function press(key: string) {
     unlockAudio()
@@ -55,7 +57,7 @@ export function CandidatePanel({
 
   async function sendPrompt() {
     const text = prompt.trim()
-    if (!text) return
+    if (!text || recordingBusy || fsm !== 'IDLE') return
     unlockAudio()
     setSendError(null)
     setPrompt('')
@@ -115,7 +117,7 @@ export function CandidatePanel({
       <div className="flex min-h-[118px] items-stretch gap-2.5">
         {!showTiles && !GENERATING.has(fsm) && !speaking && (
           <div className="flex flex-1 flex-col justify-center gap-2 rounded-lg border border-dashed border-[oklch(0.33_0.012_160)] px-4 py-3.5">
-            <span className="text-xl font-medium text-[oklch(0.76_0.012_160)]">Listening</span>
+            <span className="text-xl font-medium text-[oklch(0.76_0.012_160)]">Ready to record</span>
             <span className="text-sm text-muted">
               {detail || (scan || bci ? `Type what the partner says, then: ${scanHint}.` : 'Type what the partner says, then choose with keys 1–5.')}
             </span>
@@ -179,6 +181,7 @@ export function CandidatePanel({
         </div>
       )}
 
+      <SpeechRecorder ready={fsm === 'IDLE'} onBusy={setRecordingBusy} />
       <div className="flex flex-wrap items-center gap-2.5">
         <span className="font-mono text-[10.5px] text-muted" title="Sends the partner line over HTTP. Selection still arrives as client.key_press.">
           SCRIPTED PROMPT
@@ -195,6 +198,7 @@ export function CandidatePanel({
         <button
           type="button"
           onClick={() => void sendPrompt()}
+          disabled={recordingBusy || fsm !== 'IDLE'}
           className="h-8 rounded-md border border-[oklch(0.33_0.012_160)] bg-[oklch(0.22_0.01_160)] px-3 text-[13px]"
         >
           Send

@@ -22,6 +22,14 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 }
 
 export const api = {
+  transcribeRecording: async (audio: Blob, signal: AbortSignal): Promise<{ text: string; confidence: number }> => {
+    const res = await fetch('/api/speech/transcribe', {
+      method: 'POST', headers: { 'Content-Type': audio.type }, body: audio, signal,
+    })
+    const body = await res.json().catch(() => null)
+    if (!res.ok) throw new Error(body?.detail ?? 'Recording upload failed.')
+    return body
+  },
   onboardingStatus: () => request<OnboardingStatus>('GET', '/api/onboarding/status'),
   seed: (bio: string, name: string) => request<SeedResult>('POST', '/api/onboarding/seed', { bio, name }),
   utterance: (text: string) => request<{ state: string; trial_id: string | null }>('POST', '/api/utterance', { text }),
