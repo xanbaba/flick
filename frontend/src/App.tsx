@@ -192,7 +192,8 @@ function reduce(d: Dash, msg: WsMessage): Dash {
         ...d,
         fsm: msg.payload.state,
         detail: msg.payload.detail,
-        seeded: msg.payload.state !== 'UNSEEDED',
+        seeded: msg.payload.state === 'MEMORY_UNAVAILABLE' ? null : msg.payload.state !== 'UNSEEDED',
+        bootError: msg.payload.state === 'MEMORY_UNAVAILABLE' ? msg.payload.detail : d.bootError,
       }
     case 'conv.transcript':
       return {

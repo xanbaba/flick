@@ -58,7 +58,9 @@ class MiniLmEmbeddingProvider(EmbeddingProvider):
             try:
                 from sentence_transformers import SentenceTransformer
 
-                self._model = SentenceTransformer("all-MiniLM-L6-v2", device="cpu")
+                self._model = SentenceTransformer(
+                    "all-MiniLM-L6-v2", device="cpu", local_files_only=True
+                )
             except Exception:
                 self._model = None
         return self._model
@@ -71,3 +73,11 @@ class MiniLmEmbeddingProvider(EmbeddingProvider):
             vectors = model.encode(texts, convert_to_numpy=True, normalize_embeddings=True)
             return np.asarray(vectors, dtype=np.float64)
         return _hashing_trick_embed(texts, self.dim)
+
+    @property
+    def backend_name(self) -> str:
+        return "sentence_transformers" if self._model_or_none() is not None else "hashing_trick"
+
+    @property
+    def model_name(self) -> str:
+        return "all-MiniLM-L6-v2" if self._model_or_none() is not None else "sha256_token_signed_v1"

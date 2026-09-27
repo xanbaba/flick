@@ -123,6 +123,8 @@ class NodeRef(BaseModel):
     weight: float
     embedding: list[float] | None = None
     fact: str = ""  # the natural-language sentence retrieval.py renders as context
+    source_subject: str | None = None
+    source_role: str | None = None
 
 
 class EdgeRef(BaseModel):

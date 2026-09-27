@@ -30,12 +30,14 @@ below -- which is sub-millisecond at this problem size.
 
 from __future__ import annotations
 
+import asyncio
 import time
 
 import numpy as np
 from pydantic import BaseModel
 
 from backend.app.services.graph import EdgeRef, GraphService, NodeRef
+from backend.app.services.tiger import TigerGraphService
 from backend.providers.base import EmbeddingProvider
 from backend.providers.registry import get_embedding_provider
 from shared.config import RetrievalConfig, get_settings
@@ -233,3 +235,38 @@ def time_retrieval(
     result = service.retrieve(query_text, partner_id=partner_id)
     elapsed_ms = (time.perf_counter() - t0) * 1000
     return result, elapsed_ms
+
+
+class TigerRetrievalService(RetrievalService):
+    """Same domain result and NumPy selection, with genuinely async database I/O."""
+
+    def __init__(self, graph: TigerGraphService, config: RetrievalConfig) -> None:
+        self._graph = graph
+        self._config = config
+
+    async def retrieve(self, query_text: str, partner_id: str | None = None) -> RetrievalResult:
+        if not query_text.strip():
+            return RetrievalResult(nodes=[], edges=[], context_text="", activated_node_ids=[])
+        query = (await self._graph.embed([query_text]))[0]
+        seeds = await self._graph.vector_search(query, self._config.vector_top_k)
+        expanded = await self._graph.expand(seeds, self._config.hops, self._config.candidate_cap)
+        candidates = {n.id: n for n in expanded}
+        partner_node = await self._graph.get_node(partner_id) if partner_id else None
+        if partner_node is not None:
+            boosted = await self._graph.expand([partner_node], 1, self._config.candidate_cap)
+            candidates.update({n.id: n for n in boosted})
+        # Stable ordering makes equal facility-location gains deterministic.
+        bounded = sorted(candidates.values(), key=lambda n: (-n.weight, n.id))[
+            : self._config.candidate_cap
+        ]
+        if partner_node is not None and partner_node.id not in {n.id for n in bounded}:
+            bounded = bounded[:-1] + [partner_node]
+        bounded.sort(key=lambda n: n.id)
+        selected = await asyncio.to_thread(self._select, bounded, partner_node)
+        edges = await self._graph.edges_among([n.id for n in selected])
+        return RetrievalResult(
+            nodes=selected,
+            edges=edges,
+            context_text=self._render_context(selected),
+            activated_node_ids=[n.id for n in bounded],
+        )

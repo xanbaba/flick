@@ -16,8 +16,9 @@ calibration, and clench/eyes-closed detectors. Its sensor messages have shared
 Python/TypeScript contracts accepted by the bus, and both processes share the
 sensor settings model. The BCI adapter and shared scan controller now connect to
 the backend selection lifecycle. The conversation UI still needs to render scan
-events and send trial-correlated keyboard controls. Tiger storage and recent context
-remain unimplemented. Passing
+events and send trial-correlated keyboard controls. Tiger storage and bounded,
+speaker-labelled recent context now have an asyncpg runtime implementation;
+deployment and acceptance instructions are in `docs/TIGER_MEMORY.md`. Passing
 sensor tests does not establish an integrated live conversation.
 
 `AGENTS.md` governs process. Its references to retired stimulus, replay, and DSP
@@ -299,6 +300,8 @@ remains an optional legacy import/test setting, not an active storage destinatio
 `sys.status` includes `memory_available`, `memory_store`
 (`tiger/local_postgres/unconfigured/test`) and nullable `memory_error`, distinguishing
 unavailable storage from a reachable store without a profile.
+Startup storage failure emits `fsm.state: MEMORY_UNAVAILABLE`, not `UNSEEDED`.
+Graph/onboarding reads return 503 in that state and no empty graph is fabricated.
 
 Keep message `type`, UNIX-seconds `ts`, typed validation, and Python/TypeScript
 parity. Browser envelopes remain `{type, ts, payload}`. Implement the next contract
@@ -502,6 +505,15 @@ persistence against real PostgreSQL/pgvector before retiring Kuzu runtime use.
 Local integration tests are useful; separately prove the same core path uses the
 actual Tiger deployment for the sponsor demo. Never commit personal exports,
 recordings, database files, or secrets.
+
+The runtime migration runner applies `002_memory.sql` transactionally under an
+advisory lock and records its checksum; `001_timescale.sql` remains untouched and
+is not required for memory. `scripts/import_kuzu_memory.py` opens the legacy store
+read-only, requires a new rollback-copy path, bounds export by explicit CLI limits
+(defaults 5,000 nodes / 20,000 edges), re-embeds in the active space, and compares
+facts/IDs/attributes/weights/counts/strengths before committing. Existing target
+profiles are never overwritten. `scripts/check_memory.py` runs separate real-DB
+acceptance with clearly labelled test providers and isolated temporary profiles.
 
 ## 9. Onboarding and conversational memory
 

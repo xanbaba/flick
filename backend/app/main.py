@@ -8,7 +8,7 @@ graph. Knowledge services are constructed during application startup.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -24,11 +24,13 @@ from backend.app.services.extraction import ExtractionService
 from backend.app.services.generation import GenerationService
 from backend.app.services.graph import GraphService
 from backend.app.services.onboarding import OnboardingService, SeedUnavailableError
-from backend.app.services.partner import PartnerService
-from backend.app.services.retrieval import RetrievalService
+from backend.app.services.partner import PartnerService, TigerPartnerService
+from backend.app.services.retrieval import RetrievalService, TigerRetrievalService
 from backend.app.services.spectator import SpectatorService
 from backend.app.services.speech import SpeechService
 from backend.app.services.telemetry import TelemetryService
+from backend.app.services.tiger import MemoryUnavailableError, TigerGraphService
+from backend.app.services.tiger_learning import TigerLearningService
 from backend.app.services.voice import VoiceService
 from backend.app.services.worker import MemoryWorker, run_memory
 from backend.app.ws import Hub, relay_sensor, serve
@@ -38,7 +40,7 @@ from inputs.bci import BciInput
 from inputs.keyboard import KeyboardInput
 from inputs.replay import ReplayInput
 from inputs.ssvep import SsvepInput
-from shared.config import AppConfig, get_settings
+from shared.config import AppConfig, Settings, get_settings
 from shared.logging import configure_logging, get_logger
 
 logger = get_logger(__name__)
@@ -93,8 +95,10 @@ def build_input(adapter: str, n_targets: int, config: AppConfig | None = None) -
     raise ValueError(f"unknown input adapter: {adapter}")
 
 
-def create_app() -> FastAPI:
-    settings = get_settings()
+def create_app(
+    *, memory_factory: Callable[[], GraphService] | None = None, settings: Settings | None = None
+) -> FastAPI:
+    settings = settings or get_settings()
     config = settings.config
     hub = Hub()
     telemetry = TelemetryService(
@@ -144,6 +148,13 @@ def create_app() -> FastAPI:
         source = orchestrator.input
         input_status = source.status()
         return {
+            "memory_available": getattr(
+                orchestrator.graph, "available", orchestrator.graph is not None
+            ),
+            "memory_store": getattr(
+                orchestrator.graph, "destination", "test" if memory_factory else "unconfigured"
+            ),
+            "memory_error": getattr(orchestrator.graph, "error", None),
             "input_source": source.name,
             "input_badge": source.badge,
             "source": input_status.get("source", config.mode.source),
@@ -177,28 +188,50 @@ def create_app() -> FastAPI:
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         configure_logging()
         worker = MemoryWorker()
-        graph_service: GraphService | None = None
+        graph_service: GraphService | TigerGraphService | None = None
         try:
-            graph_service = await worker.run(
-                GraphService,
-                config.graph.db_path,
-                config.graph.embedding_dim,
-                get_embedding_provider(),
-            )
+            if memory_factory is not None:
+                # Explicit dependency injection for legacy offline tests only.
+                graph_service = await worker.run(memory_factory)
+            else:
+                dsn = settings.env.tiger_dsn or settings.env.local_pg_dsn
+                destination = (
+                    "tiger"
+                    if settings.env.tiger_dsn
+                    else "local_postgres"
+                    if settings.env.local_pg_dsn
+                    else "unconfigured"
+                )
+                graph_service = TigerGraphService(
+                    dsn,
+                    config.graph.profile_id,
+                    get_embedding_provider(),
+                    config.database,
+                    config.reinforcement,
+                    destination=destination,
+                )
+                try:
+                    await graph_service.open()
+                except MemoryUnavailableError:
+                    logger.warning("memory.startup_unavailable", destination=destination)
             orchestrator.graph = graph_service
             orchestrator.worker = worker
-            orchestrator.retrieval = RetrievalService(graph_service, config=config.retrieval)
+            is_tiger = isinstance(graph_service, TigerGraphService)
+            retrieval_type = TigerRetrievalService if is_tiger else RetrievalService
+            partner_type = TigerPartnerService if is_tiger else PartnerService
+            extraction_type = TigerLearningService if is_tiger else ExtractionService
+            orchestrator.retrieval = retrieval_type(graph_service, config=config.retrieval)
             orchestrator.onboarding = OnboardingService(
                 graph_service,
                 worker=worker,
                 config=config.generation,
             )
-            orchestrator.partner = PartnerService(
+            orchestrator.partner = partner_type(
                 graph_service,
                 worker=worker,
                 config=config.generation,
             )
-            orchestrator.extraction = ExtractionService(
+            orchestrator.extraction = extraction_type(
                 graph_service,
                 config=config.extraction,
                 worker=worker,
@@ -219,7 +252,7 @@ def create_app() -> FastAPI:
             await orchestrator.stop()
             await telemetry.stop()
             if graph_service is not None:
-                await worker.run(graph_service.close)
+                await run_memory(worker, graph_service.close)
             orchestrator.graph = None
             await worker.close()
 
@@ -232,11 +265,20 @@ def create_app() -> FastAPI:
 
     @app.get("/api/health")
     async def health() -> dict[str, object]:
-        return {"ok": True, "state": orchestrator.state, "providers": health_snapshot()}
+        return {
+            "ok": True,
+            "state": orchestrator.state,
+            "providers": health_snapshot(),
+            "memory_available": status_payload()["memory_available"],
+            "memory_store": status_payload()["memory_store"],
+        }
 
     @app.get("/api/graph")
     async def graph() -> dict[str, object]:
-        return await snapshot_payload()
+        try:
+            return await snapshot_payload()
+        except MemoryUnavailableError as exc:
+            raise HTTPException(503, str(exc)) from exc
 
     @app.post("/api/onboarding/seed")
     async def seed(body: SeedBody) -> dict[str, object]:
@@ -254,7 +296,10 @@ def create_app() -> FastAPI:
 
     @app.get("/api/onboarding/status")
     async def onboarding_status() -> dict[str, object]:
-        return await orchestrator.onboarding_status()
+        try:
+            return await orchestrator.onboarding_status()
+        except MemoryUnavailableError as exc:
+            raise HTTPException(503, str(exc)) from exc
 
     @app.post("/api/partner")
     async def partner(body: PartnerBody) -> dict[str, object]:
@@ -266,6 +311,8 @@ def create_app() -> FastAPI:
             )
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
+        except MemoryUnavailableError as exc:
+            raise HTTPException(503, str(exc)) from exc
         return {"partner_id": body.partner_id}
 
     @app.post("/api/utterance")

@@ -177,7 +177,7 @@ export interface WsPayloads {
   'privacy.cost': { turn_id: string; items: PrivacyCostItem[]; turn_usd: number; session_usd: number };
   'spectator.link': { url: string | null; connected_viewers: number };
 }
-export type FsmState = 'UNSEEDED' | 'IDLE' | 'TRANSCRIBING' | 'GROUNDING' | 'INTENT_GEN' | 'INTENT_WAIT' | 'CANDIDATE_GEN' | 'CANDIDATE_WAIT' | 'SPEAKING' | 'LEARNING';
+export type FsmState = 'MEMORY_UNAVAILABLE' | 'UNSEEDED' | 'IDLE' | 'TRANSCRIBING' | 'GROUNDING' | 'INTENT_GEN' | 'INTENT_WAIT' | 'CANDIDATE_GEN' | 'CANDIDATE_WAIT' | 'SPEAKING' | 'LEARNING';
 export type WsType = keyof WsPayloads;
 export type WsMessage = { [K in WsType]: { type: K; ts: number; payload: WsPayloads[K] } }[WsType];
 export const HIGH_RATE: ReadonlySet<WsType> = new Set(['eeg.trace', 'eeg.psd', 'bci.scores']); // refs + rAF only, never useState (§16.3)

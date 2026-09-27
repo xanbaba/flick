@@ -141,7 +141,7 @@ async def serve(
 ) -> None:
     await hub.connect(ws)
     try:
-        await hub.send(ws, "graph.snapshot", await snapshot())
+        await _send_snapshot(ws, hub, snapshot)
         await hub.send(ws, "sys.status", status())
         for message_type, payload in on_connect() if on_connect is not None else []:
             await hub.send(ws, message_type, payload)
@@ -174,7 +174,18 @@ async def _handle_inbound(
             handler(message)
         return
     if isinstance(message, RequestSnapshot):
-        await hub.send(ws, "graph.snapshot", await snapshot())
+        await _send_snapshot(ws, hub, snapshot)
         await hub.send(ws, "sys.status", status())
     elif isinstance(message, PlaybackComplete):
         hub.playback_complete(ws, message)
+
+
+async def _send_snapshot(ws: WebSocket, hub: Hub, snapshot: SnapshotFn) -> None:
+    from backend.app.services.tiger import MemoryUnavailableError
+
+    try:
+        payload = await snapshot()
+    except MemoryUnavailableError:
+        # The following sys.status describes the error. Never fabricate an empty graph.
+        return
+    await hub.send(ws, "graph.snapshot", payload)

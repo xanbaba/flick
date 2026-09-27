@@ -21,7 +21,9 @@ import time
 import uuid
 from collections.abc import Awaitable, Callable
 
+from backend.app.services.conversation import ConversationTurn, render_recent
 from backend.app.services.cost import CostTracker
+from backend.app.services.extraction import ExtractionResult
 from backend.app.services.generation import CandidateResult, GenerationService, IntentResult
 from backend.app.services.graph import EdgeRef, GraphService
 from backend.app.services.interfaces import (
@@ -33,6 +35,8 @@ from backend.app.services.interfaces import (
     SpellerServiceProtocol,
 )
 from backend.app.services.speech import SpeechService
+from backend.app.services.tiger import MemoryUnavailableError, TigerGraphService
+from backend.app.services.tiger_learning import TigerLearningService
 from backend.app.services.voice import VoiceService
 from backend.app.services.worker import MemoryWorker, run_memory
 from backend.providers.base import Transcript
@@ -130,12 +134,19 @@ class Orchestrator:
         self._context_edges: list[EdgeRef] = []
         self._partner_id: str | None = None
         self._seed_lock = asyncio.Lock()
+        self._recent_context = ""
 
     async def start(self) -> None:
         await self._start_input()
         await self.speech.start()
         self.speech.gate(True)
-        status = await self.onboarding_status()
+        try:
+            status = await self.onboarding_status()
+            if isinstance(self.graph, TigerGraphService):
+                await self._load_recent()
+        except MemoryUnavailableError:
+            await self._transition("MEMORY_UNAVAILABLE", "Memory storage unavailable")
+            return
         if status["seeded"]:
             await self._transition(IDLE, "graph already seeded")
             self.speech.gate(False)
@@ -322,6 +333,7 @@ class Orchestrator:
     async def _run_until_waiting(self, text: str) -> None:
         self._turn_id = uuid.uuid4().hex
         self._utterance = text
+        self._intent = ""
         cost_turn = self.cost.start_turn(self._turn_id)
         try:
             await self._transition(TRANSCRIBING, text)
@@ -340,6 +352,8 @@ class Orchestrator:
                 await self._speller_loop()
                 return
             await self._intent_round()
+        except MemoryUnavailableError:
+            await self._idle("Memory unavailable; this turn was not generated")
         finally:
             summary = cost_turn.finalize()
             await self._broadcast("privacy.cost", summary.model_dump())
@@ -360,12 +374,25 @@ class Orchestrator:
                     self._partner_relationship = current.relationship
         await self._retrieve(self._utterance)
 
+    async def _load_recent(self) -> None:
+        if isinstance(self.graph, TigerGraphService):
+            turns = await self.graph.recent_turns(
+                self._partner_id, self.config.conversation.recent_exchanges
+            )
+            self._recent_context = render_recent(turns, self.config.conversation)
+
     async def _retrieve(self, query: str) -> None:
         self._context = ""
         self._context_node_ids = []
         self._context_edges = []
         if self.retrieval is None:
             return
+        await self._load_recent()
+        if self._recent_context:
+            # MiniLM truncates long inputs. Keep this question and its newest
+            # antecedents first; prompts still receive chronological dialogue.
+            newest_first = "\n".join(reversed(self._recent_context.splitlines()))
+            query = f"CURRENT:\n{query}\nRECENT EXCHANGES (newest first):\n{newest_first}"
         result = await run_memory(
             self.worker, self.retrieval.retrieve, query, partner_id=self._partner_id
         )
@@ -467,7 +494,13 @@ class Orchestrator:
             spoken = await self.voice.speak(text)
         except Exception as exc:
             logger.warning("orchestrator.speech_failed", error_type=type(exc).__name__)
-            await self._idle("Speech unavailable; please try again")
+            detail = "Speech unavailable; please try again"
+            if isinstance(self.graph, TigerGraphService):
+                try:
+                    await self._learn_tiger(text, "failed", [])
+                except Exception:
+                    detail += "; Memory update failed"
+            await self._idle(detail)
             return
         payload: dict[str, object] = {
             "text": spoken.text,
@@ -505,7 +538,28 @@ class Orchestrator:
                 else "; audio playback unavailable"
             )
         try:
-            if self.graph is not None:
+            if isinstance(self.graph, TigerGraphService):
+                extracted, extraction_ok = await self._learn_tiger(text, outcome, grounding)
+                if not extraction_ok:
+                    detail += "; exchange saved, fact extraction unavailable"
+                if extracted.committed_node_ids or extracted.committed_edge_ids:
+                    snapshot = await self.snapshot()
+                    await self._broadcast(
+                        "graph.bloom",
+                        {
+                            "nodes": [
+                                n
+                                for n in snapshot["nodes"]
+                                if n["id"] in extracted.committed_node_ids
+                            ],
+                            "edges": [
+                                e
+                                for e in snapshot["edges"]
+                                if e["id"] in extracted.committed_edge_ids
+                            ],
+                        },
+                    )
+            elif self.graph is not None:
                 grounded = set(grounding) & set(self._context_node_ids)
                 edge_ids = [
                     edge.id
@@ -521,7 +575,7 @@ class Orchestrator:
                     edge_increment=self.config.reinforcement.edge_increment,
                     max_weight=self.config.reinforcement.max_weight,
                 )
-            if self.extraction is not None:
+            if self.extraction is not None and not isinstance(self.graph, TigerGraphService):
                 extracted = await self.extraction.extract_and_writeback(self._utterance, text)
                 snapshot = await self.snapshot()
                 nodes = [n for n in snapshot["nodes"] if n["id"] in extracted.committed_node_ids]
@@ -531,6 +585,12 @@ class Orchestrator:
         except Exception as exc:
             logger.warning("orchestrator.learning_failed", error_type=type(exc).__name__)
             detail += "; memory update unavailable"
+            if isinstance(self.graph, TigerGraphService):
+                detail += "; Memory update failed or commit uncertain"
+                try:
+                    await self.graph.reconcile()
+                except Exception:
+                    logger.warning("orchestrator.memory_reconciliation_failed")
         finally:
             if self.graph is not None:
                 try:
@@ -539,6 +599,25 @@ class Orchestrator:
                     logger.warning("orchestrator.snapshot_failed", error_type=type(exc).__name__)
                     detail += "; memory update unavailable"
             await self._idle(detail, rearm_mic=outcome != "unconfirmed")
+
+    async def _learn_tiger(
+        self, text: str, outcome: str, grounding: list[str]
+    ) -> tuple[ExtractionResult, bool]:
+        if not isinstance(self.extraction, TigerLearningService):
+            raise MemoryUnavailableError("Tiger learning service is unavailable")
+        grounded = set(grounding) & set(self._context_node_ids)
+        edges = [e.id for e in self._context_edges if e.source in grounded and e.target in grounded]
+        turn = ConversationTurn(
+            id=self._turn_id,
+            partner_id=self._partner_id,
+            partner_name=self._partner_name,
+            user_name=self._user_name,
+            incoming_utterance=self._utterance,
+            chosen_intent=self._intent,
+            selected_reply=text,
+            playback_outcome=outcome if outcome in {"completed", "unconfirmed"} else "failed",
+        )
+        return await self.extraction.learn_turn(turn, self._recent_context, list(grounded), edges)
 
     async def _idle(self, detail: str, *, rearm_mic: bool = True) -> None:
         self.input.close_trial("idle")
@@ -552,7 +631,11 @@ class Orchestrator:
         try:
             generation = self.generation or GenerationService(config=self.config.generation)
             result = await generation.generate_intent_result(
-                self._context, self._partner_name, self._partner_relationship, self._utterance
+                self._context,
+                self._partner_name,
+                self._partner_relationship,
+                self._utterance,
+                recent_context=self._recent_context,
             )
         except Exception as exc:
             logger.warning("orchestrator.intent_gen_fell_through", error_type=type(exc).__name__)
@@ -582,6 +665,7 @@ class Orchestrator:
                 partner_relationship=self._partner_relationship,
                 utterance=self._utterance,
                 intent=self._intent,
+                recent_context=self._recent_context,
             )
         except Exception as exc:
             logger.warning("orchestrator.candidate_gen_fell_through", error_type=type(exc).__name__)
