@@ -23,6 +23,7 @@ dependencies = [
   "faster-whisper>=1.2.1",
   "sounddevice>=0.5.6",
   "webrtcvad-wheels>=2.0.14",
+  "tzdata>=2026.4",
 ]
 
 [tool.uv]
