@@ -4,6 +4,93 @@ Changes to `ARCHITECTURE.md`, newest first. Each entry lists what changed, why, 
 
 ---
 
+## Merge of `main` (2e72970) — 2026-09-27
+
+**What happened:** Khanbaba adopted the revision-3 proposals (A1–A16 in `docs/for-review/ARCHITECTURE_ADDITIONS.md`) into **his** `ARCHITECTURE.md` (commits `9c7e74d`, `2e72970`), with his own adjustments in his §27.4. His `ARCHITECTURE.md` is now the single source of truth; the revision 2 and 3 drafts from this branch are retired (copies kept in the Claude project). Section numbers in the entries below refer to those retired drafts.
+
+**Corrections he recorded (his §27.3), accepted:**
+
+- Candidate grounding is already connected; empty grounding only on the exact-intent fallback.
+- Onboarding seed is already one transaction in Kuzu, with rollback tests; the Tiger port must keep that guarantee.
+- Playback gating already waits for browser playback to finish; a second browser view (`/pilot`) needs an audio-owner rule.
+- Adapter hot-swap already restarts the listener and rolls back on failure.
+- Cancel at a fixed last slot is current, tested behaviour; per-round Cancel is a contract change, not a bug fix.
+- Score thresholds already come from backend config; partner/extraction already use configured budgets.
+- Tiger is the target, not the current store; Kuzu is still the runtime store.
+- The speller service exists but is not wired into the app, and its protocol differs; Spell mode is substantial new work.
+- **Local Mode was removed** on `main`; it is not in the cut list.
+
+**His build sequence (his §21.2):** coordinated config/schema contract revision → shared scan/keyboard/replay → P1/BCI and pilot view → binary Spell + suggestions + FSM → Tiger port → telemetry/analytics and headset tests.
+
+---
+
+## Revision 3 — 2026-09-27
+
+**Author:** Zahid (with Claude). **Status:** proposal for team review; decisions below agreed on Zahid's side.
+
+**What changes:** how a tile is chosen, and a new Spell mode. **What does not change:** the conversation pipeline, memory design, Tiger Data as the only database, voice, providers and fallbacks, onboarding, privacy, spectator, and the work in progress on `main` (§21.5 answers it item by item).
+
+### Why
+
+1. Sequential flicker (revision 2's pure-EEG option) was tested on the headset and did not work (43%, p = 0.17; no response to flicker even with perfect contact). Nothing in the product flickers any more.
+2. The most reliable free-tier Emotiv signal is the jaw clench (1 spontaneous clench in 13 minutes); a trained mental command gives the brain-computer-interface story. Splitting the roles — mental command moves, clench chooses — means a false mental command can never choose anything.
+3. The AI's intents cannot cover every word (names, places, new topics), so spelling is kept one tile away, made faster with personal word suggestions, and fed back into the AI.
+4. Without flicker, frame-exact stimulus timing is unnecessary, so the PsychoPy stimulus process is replaced by a browser page.
+
+### What changed, by section
+
+| § | Change |
+|---|---|
+| Header | Revision 3 note: what changes and what does not. |
+| 1.1–1.3 | Two-switch step scanning; Spell… tile; Spell mode is P1 (was a P2 contrast-only speller). |
+| 1.4 | Non-goals: any flicker; smile/smirk/laugh and gaze triggers. |
+| 2.1 | HW-2: one mental command + clench; HW-5: pilot view in a browser, NVIDIA GPU measured (4.7 vs 165 fps). |
+| 2.2 | UX-1…UX-5 rewritten: intent round 5 tiles (3 + Spell… + Cancel), candidate round 4 tiles; Cancel always last and sent explicitly; next moves, select chooses; no flicker. |
+| 2.3 | DSP rows rewritten: P1 emits next/select events only; the `bci` adapter owns the highlight. |
+| 2.4 | SW-2 pilot view is a frontend route; SW-12 two Python processes (P2 removed). |
+| 2.5 | DEMO-3 trigger labels; DEMO-6 contamination applies to `next`; DEMO-7 pitch wording. |
+| 3 | P2 removed; P1 ↔ P3 over ZMQ, P3 ↔ browser over WS; new turn flow including Spell. |
+| 4 | `inputs/bci.py`, `inputs/scan.py`; `sensor/triggers/{mental_command,jaw_clench}.py`; `frontend/src/views/Pilot.tsx`, `SpellPanel.tsx`; `stimulus/` removed; `experiments/triggers/` placeholder. |
+| 5 | `mode.next_trigger` / `mode.select_trigger`; `scan` block (timeout, hold); `triggers` for the two detectors; new `speller` block (frequency-ordered alphabet, specials, suggestion sources, lexicon); stimulus and decision blocks removed. |
+| 6.1 | `Selection.algorithm = "step_scan"`, `trigger`, `moves`; only `select` produces a Selection. |
+| 6.2 | `TriggerLevel` and `TriggerEvent` (role next/select) replace revision 2's `CommandFrame`, `SlotScores`, `SensorSelection`. |
+| 6.3 | Keyboard keys: `n` next, `s` select, `1`–`5` direct. |
+| 6.4 | New `sensor.control` (P3 → P1, training). Revision 2's `stim.*` messages removed. |
+| 6.5 | New WS messages to the pilot view: `scan.targets` (with `cancel_idx`), `scan.highlight`, `scan.selected`, `scan.idle`, `spell.state`. |
+| 6.6 | Dashboard: `bci.trigger_level`, `bci.trigger`; `sys.status` drops `profile`, `measured_refresh_hz`, `stimulus_integrity`; analytics adds moves per selection, unintended selects, letters per minute. |
+| 6.8 | REST: `/api/mode` and trigger/baseline endpoints removed; `/api/speller/suggest` added. |
+| 7 | Rewritten: `bci` adapter and highlight; the two triggers; other reliable triggers kept for reference; **Spell mode** (binary search, frequency order, SPACE/DELETE/DONE, suggestions from memory → lexicon → LLM, DONE → candidate generation); excluded triggers with evidence; keyboard keys; flicker test recorded; why one mental command. |
+| 8 | Rewritten: Cortex connection, mental-command training, the two detectors, contamination, synthetic source, recorder, OpenBCI contingency. |
+| 9 | Stimulus process replaced by the pilot view (`/pilot`). |
+| 12 | Intent tiles followed by Spell… and Cancel; spelled text as the intent for candidate generation. |
+| 13 | FSM adds SPELLING; timeouts from `scan.trial_timeout_s`. |
+| 16 | ScanPanel, SpellPanel, MuscleStrip on the next meter; StatusBar trigger labels. |
+| 18 | `slot_scores` and `stimulus_integrity` tables replaced by `triggers` and `spell_steps`; `selections` adds `moves`; analytics updated. |
+| 21 | Roles and schedule for revision 3; cut order; **§21.5 integration with `main`**, including Cancel index per round and `speller.py` ownership. |
+| 22–24 | Failure modes, acceptance tests (A2 includes speller tests; A4 includes a spelled turn; A6 headset triggers, later) and assumptions (triggers, lexicon). |
+| 25–26 | Credits and Microsoft / Tiger paragraphs updated. |
+
+### Code follow-ups this revision creates
+
+Contract changes go through AGENTS.md §4 (announce, confirm, one commit with `types.ts`), after the current `main` work merges.
+
+- `shared/schemas.py` + `frontend/src/lib/types.ts` — §6.
+- `config.yaml`, `shared/config.py` — §5.
+- `inputs/scan.py`, `inputs/bci.py` (new); `inputs/keyboard.py` keys; `inputs/ssvep.py` removed.
+- `sensor/` (new): Cortex source, two detectors, training, synthetic, recorder.
+- `backend/app/orchestrator.py` — variable tile counts per round, Cancel from the label list, SPELLING state.
+- `backend/app/services/speller.py` — N = 2, frequency order, specials, suggestions (owner: Dev D; coordinate).
+- `backend/data/lexicon_en.txt` — new word list.
+- `frontend/src/views/Pilot.tsx`, `ScanPanel`, `SpellPanel`, `MuscleStrip`.
+- `migrations/002_timeseries.sql` — `triggers`, `spell_steps`.
+
+### Open items
+
+- [ ] Team review of this revision (cover note: `docs/rev3-review-note.md`).
+- [ ] Headset trigger test (A6) — deferred by decision; run before the demo.
+
+---
+
 ## Revision 2.1 — 2026-09-27
 
 **Author:** Zahid (with Claude). **Why:** first feasibility test for `seq_flicker` (Option 2), and a timing fact confirmed in the Cortex API docs: each `pow` sample is computed from the **last 2 seconds** of EEG, at 8 Hz, in uV²/Hz.
