@@ -2,6 +2,37 @@ input:
   adapter: keyboard          # keyboard | ssvep | replay | emotiv
   replay_file: null
 
+# Cortex sensor configuration; independent of legacy SSVEP mode settings below.
+sensor:
+  source: emotiv             # emotiv | synthetic | replay (development only)
+  cortex_url: wss://localhost:6868
+  headset_id: null
+  pub_address: tcp://127.0.0.1:5555
+  control_address: tcp://127.0.0.1:5556
+  calibration_s: 20
+  min_calibration_fraction: 0.6
+  min_contact_quality: 3
+  max_sample_gap_s: 0.5
+  shared_refractory_s: 0.8
+  contamination_z: 4.0
+  status_hz: 1.0
+  next:
+    sensors: [FC5, FC6, T7, T8]
+    band: gamma
+    z_threshold: 8.0
+    hold_s: 0.25
+    refractory_s: 0.0
+  select:
+    sensors: [O1, O2]
+    band: alpha
+    z_threshold: 2.0
+    hold_s: 0.5
+    refractory_s: 3.0
+  record: false
+  record_dir: ./data/sessions
+  record_queue_max: 20000
+  replay_file: null
+
 mode:
   source: synthetic          # cyton | synthetic | replay   (sensor process)
   targets: 5                 # 5 | 4

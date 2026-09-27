@@ -30,20 +30,23 @@ python -m sensor.main --source replay --replay-file data/sessions/<file>.jsonl
 python -m sensor.main --calibration-s 15 --no-record
 ```
 
-Every live run records raw packets and triggers to `data/sessions/*.jsonl`
-(ignored by git). Settings can be overridden in a `sensor:` section of
-`config.yaml` once that section is added in the contract commit.
+Recording is disabled by default. Setting `sensor.record: true` records raw
+packets and triggers to `data/sessions/*.jsonl` (ignored by git). Runtime settings
+are in the `sensor:` section of `config.yaml`; CLI options override them. Both P1
+and the backend validate these settings with `shared.config.SensorSettings`.
 
 ## Messages (5555)
 
 `bci.bandpower` (8 Hz), `bci.trigger_level` (8 Hz, z-scores),
 `bci.trigger` (`role` next/select, `kind` jaw_clench/eyes_closed, `strength`,
-`contaminated`), `bci.status` (1 Hz). Models are in `sensor/messages.py`
-until they move to `shared/schemas.py`.
+`contaminated`, required `event_id`), `bci.status` (1 Hz). Models live in
+`shared/schemas.py` and are accepted by the shared bus. `sensor/messages.py`
+re-exports them for compatibility. Preserve event IDs when forwarding messages;
+backend scan integration is still required.
 
 ## Files
 
-- `settings.py` — thresholds and defaults
+- `settings.py` — loader and compatibility imports for shared settings
 - `engine.py` — calibration, gating, detection (pure logic)
 - `triggers/base.py` — hold / release / refractory detector
 - `sources/` — `cortex.py` (live), `synthetic.py`, `replay.py`, `cortex_client.py`

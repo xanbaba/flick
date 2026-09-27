@@ -14,6 +14,7 @@ from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from shared.schemas import (
     AnalyticsSummary,
+    BandPowerFrame,
     BusMessage,
     ClientMessage,
     EegChunk,
@@ -24,6 +25,7 @@ from shared.schemas import (
     PsdFrame,
     RequestSnapshot,
     Selection,
+    SensorControl,
     SensorSelection,
     SensorStatus,
     ShowTargets,
@@ -32,11 +34,21 @@ from shared.schemas import (
     StimulusOnset,
     StimulusProfile,
     TargetScores,
+    TriggerEvent,
+    TriggerLevel,
 )
 
 # One valid set of kwargs per model in section 6. Every model here
 # must exist with exactly these field names and types.
 VALID_KWARGS: dict[type[BaseModel], dict] = {
+    BandPowerFrame: dict(ts=1.0, sensors=["O1"], bands=["alpha"], power=[[1.0]]),
+    TriggerLevel: dict(
+        ts=1.0, next_level=9.0, next_threshold=8.0, select_level=0.2, select_threshold=2.0
+    ),
+    TriggerEvent: dict(
+        ts=1.0, source_ts=0.9, event_id="event-1", role="next", kind="jaw_clench", strength=0.8
+    ),
+    SensorControl: dict(ts=1.0, action="calibrate"),
     PlaybackComplete: dict(
         type="client.playback_complete", ts=1.0, playback_id="reply-1", outcome="completed"
     ),
@@ -172,10 +184,14 @@ MODEL_IDS = [cls.__name__ for cls, _ in MODEL_CASES]
 # Models that carry "type" and "ts" and participate in the discriminated
 # BusMessage union: the ZMQ bus (section 6.1, 6.2, 6.4, 6.5).
 BUS_MESSAGE_MODELS = [
+    BandPowerFrame,
     Selection,
     EegChunk,
     PsdFrame,
     TargetScores,
+    TriggerEvent,
+    TriggerLevel,
+    SensorControl,
     SensorSelection,
     SensorStatus,
     ShowTargets,

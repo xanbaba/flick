@@ -4,6 +4,22 @@ Changes to `ARCHITECTURE.md`, newest first. Each entry lists what changed, why, 
 
 ---
 
+## Shared sensor contracts and runtime settings — 2026-09-27
+
+The coordinated sensor contract revision moves message authority into
+`shared/schemas.py`, registers all sensor messages in the bus union, and mirrors
+the wire fields in TypeScript. P1 assigns a required stable event ID; validation
+rejects invalid role/kind pairs and non-finite values. Existing sensor imports
+re-export shared classes. The combined status model preserves legacy fields as
+nullable values without claiming calibrated readiness for older producers.
+
+`shared.config.SensorSettings` now serves both config loaders. Runtime YAML
+contains the detector settings and disables optional recording by default.
+Existing unrelated config remains until its consumers migrate. BCI scanning,
+clock/freshness enforcement, Tiger and conversational context remain follow-up.
+
+---
+
 ## Reduced scope and approved sensor mapping — 2026-09-27
 
 The current architecture retains the spoken conversation loop, onboarding,

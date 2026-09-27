@@ -12,15 +12,17 @@ context across turns. **Tiger Data is required for the sponsor challenge.**
 This is the target, not a claim of completed implementation. At the scope review,
 the repository had a working keyboard/SSVEP-oriented conversation pipeline and
 Kuzu memory. Zahid's sensor branch now supplies Cortex acquisition, baseline
-calibration, and clench/eyes-closed detectors. Its messages still need integration
-with the shared bus, input adapter, scan controller, and conversation UI. Tiger
-storage and explicit recent-conversation context remain unimplemented. Passing
+calibration, and clench/eyes-closed detectors. Its sensor messages have shared
+Python/TypeScript contracts accepted by the bus, and both processes share the
+sensor settings model. The input adapter, scan controller, and conversation UI
+still need integration. Tiger storage and explicit recent-conversation context
+remain unimplemented. Passing
 sensor tests does not establish an integrated live conversation.
 
 `AGENTS.md` governs process. Its references to retired stimulus, replay, and DSP
 features do not restore them to scope. Sections 5 and 6 specify the reduced
-configuration and contracts; this document-only revision does not change runtime
-interfaces or bypass their coordinated-edit process.
+configuration and contracts. The sensor contract/config revision is implemented;
+remaining runtime migrations still follow the coordinated-edit process.
 
 ## 1. The product to deliver
 
@@ -197,7 +199,9 @@ under AGENTS.md; this table does not reassign another contributor's files.
 
 ## 5. Configuration
 
-Target delta for the coordinated runtime revision, not the current config file.
+The `sensor:` block is implemented in runtime config and validated through
+`shared.config.SensorSettings` by both the application and P1. Other blocks below
+remain the target delta for subsequent coordinated runtime revisions.
 Retain working provider, retrieval, generation-recovery, extraction,
 reinforcement, and runtime voice/cache settings unless replaced here.
 
@@ -257,9 +261,14 @@ voice:
   playback_timeout_s: 30
 ```
 
-P1 currently reads an optional `sensor:` section and otherwise uses Python
-defaults. Move those settings into active config in the coordinated revision.
-Until then, `--no-record` disables its existing optional recorder for normal use.
+P1 reads the active `sensor:` section; CLI overrides take precedence. Both loaders
+use the same validated defaults for omitted values. Recording defaults to false.
+The section also declares `pub_address` (tcp://127.0.0.1:5555), `control_address`
+(tcp://127.0.0.1:5556), `record_dir` (./data/sessions), `record_queue_max` (20000),
+and nullable `replay_file` for existing development tools. Non-finite settings,
+empty sensor lists, nonpositive holds and invalid calibration bounds are rejected.
+Legacy runtime sections remain until their consumers migrate; this contract
+revision does not activate a BCI adapter or change the conversation tile count.
 
 Remove old `mode`, EEG/DSP/stimulus/classify/decision/SSVEP-calibration and Kuzu path
 requirements from active configuration. Do not add spelling, replay, telemetry,
@@ -292,10 +301,23 @@ events predating trial activation, duplicate/stale events, and events for closed
 interaction periods. Loss of fresh readiness disarms input. Select strength is
 BCI confidence, not accuracy; manual input uses 1.0 with its badge.
 
-Existing P1 models live in `sensor/messages.py`; they are not yet in the shared
-bus union or frontend types and do not yet provide unique event IDs. Integrate
-them coherently. Existing optional band-power/trigger-level diagnostics need no
-frontend panel; trigger levels are baseline z-scores, not Cortex command powers.
+P1 models are authoritative in `shared/schemas.py`, included in `BusMessage`,
+and mirrored in frontend types. `sensor/messages.py` re-exports those same
+classes for existing callers. Each trigger requires `event_id`, generated once
+by P1 as a UUID string; forwarding must preserve it. Missing IDs, non-finite
+values, out-of-range strength and mismatched role/kind pairs are rejected.
+`ts` currently means local publication time and `source_ts` retains the Cortex
+sample time: clock normalization and freshness/deduplication enforcement remain
+adapter/sensor follow-up, not a property guaranteed by schema validation.
+
+Optional `bci.bandpower` and `bci.trigger_level` diagnostics and the supported
+`sensor.control` action `calibrate` also participate in the bus union. They need
+no frontend panel; trigger levels are baseline z-scores, not command powers.
+One `bci.status` model accepts live `emotiv` and development `synthetic/replay`
+sources plus legacy `cyton`. Legacy `configured`, `samples_received` and
+`railed_channels` are nullable; omitted legacy fields do not invent measurements.
+Legacy messages default to uncalibrated/unarmed and cannot establish BCI readiness.
+The unused profile/training status fields remain for import/wire compatibility.
 
 ### 6.2 Browser interaction
 

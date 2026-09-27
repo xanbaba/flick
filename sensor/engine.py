@@ -21,6 +21,7 @@ from __future__ import annotations
 import contextlib
 import math
 from dataclasses import dataclass, field
+from uuid import uuid4
 
 from sensor.messages import TriggerEvent, TriggerLevel
 from sensor.settings import BandTrigger, SensorSettings
@@ -208,7 +209,12 @@ class TriggerEngine:
             self.shared_quiet_until = t + self.s.shared_refractory_s
             out.append(
                 TriggerEvent(
-                    ts=now, source_ts=t, role="next", kind="jaw_clench", strength=r_next.strength
+                    event_id=str(uuid4()),
+                    ts=now,
+                    source_ts=t,
+                    role="next",
+                    kind="jaw_clench",
+                    strength=r_next.strength,
                 )
             )
         r_sel = self.d_select.update(
@@ -218,6 +224,7 @@ class TriggerEngine:
             self.shared_quiet_until = t + self.s.shared_refractory_s
             out.append(
                 TriggerEvent(
+                    event_id=str(uuid4()),
                     ts=now,
                     source_ts=t,
                     role="select",

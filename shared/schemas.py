@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # --------------------------------------------------------------------------
 # 6.1 The selection contract
@@ -85,15 +85,78 @@ class SensorSelection(BaseModel):  # topic "bci.selection", event
     algorithm: Literal["fbcca", "etrca"]
 
 
-class SensorStatus(BaseModel):  # 1 Hz
-    type: Literal["bci.status"]
+class SensorMessage(BaseModel):
+    """Reject non-finite measurements and timestamps on the sensor wire."""
+
+    model_config = ConfigDict(allow_inf_nan=False)
+
+
+class BandPowerFrame(SensorMessage):
+    type: Literal["bci.bandpower"] = "bci.bandpower"
     ts: float
-    source: Literal["cyton", "synthetic", "replay"]
+    sensors: list[str]
+    bands: list[str]
+    power: list[list[float]]  # [sensor][band], uV^2/Hz as reported by Cortex
+
+
+class TriggerLevel(SensorMessage):
+    type: Literal["bci.trigger_level"] = "bci.trigger_level"
+    ts: float
+    next_level: float  # z
+    next_threshold: float  # z
+    select_level: float  # z
+    select_threshold: float  # z
+    facial_action: str | None = None
+    facial_power: float = 0.0
+
+
+class TriggerEvent(SensorMessage):
+    type: Literal["bci.trigger"] = "bci.trigger"
+    ts: float  # local clock, when the hold completed
+    event_id: str = Field(min_length=1)  # assigned once by P1, preserved on retransmit
+    source_ts: float  # Cortex timestamp of the completing sample
+    role: Literal["next", "select"]
+    kind: Literal["jaw_clench", "eyes_closed"]
+    strength: float = Field(ge=0, le=1)
+    contaminated: bool = False
+
+    @model_validator(mode="after")
+    def _role_matches_kind(self) -> TriggerEvent:
+        expected = "jaw_clench" if self.role == "next" else "eyes_closed"
+        if self.kind != expected:
+            raise ValueError("trigger kind must match its next/select role")
+        return self
+
+
+class SensorStatus(SensorMessage):
+    type: Literal["bci.status"] = "bci.status"
+    ts: float
+    source: Literal["emotiv", "cyton", "synthetic", "replay"]
     connected: bool
-    configured: bool  # has a stim.profile been received?
-    samples_received: int
-    dropped_samples: int
-    railed_channels: list[int]
+    headset_id: str | None = None
+    battery_pct: int | None = None
+    contact_quality: dict[str, int] = Field(default_factory=dict)
+    eeg_quality: float | None = None
+    streams: list[str] = Field(default_factory=list)
+    next_trigger: Literal["jaw_clench"] = "jaw_clench"
+    select_trigger: Literal["eyes_closed"] = "eyes_closed"
+    calibrated: bool = False
+    calibration_progress: float = Field(default=0.0, ge=0, le=1)  # 0..1
+    armed: bool = False  # calibrated, fresh data, contact OK
+    blocked_reason: str | None = None
+    profile_loaded: bool = False
+    trained_actions: list[str] = Field(default_factory=list)
+    dropped_samples: int = Field(default=0, ge=0)
+    # Legacy SSVEP fields are nullable: absent measurements are not zeros.
+    configured: bool | None = None
+    samples_received: int | None = Field(default=None, ge=0)
+    railed_channels: list[int] | None = None
+
+
+class SensorControl(SensorMessage):
+    type: Literal["sensor.control"] = "sensor.control"
+    ts: float
+    action: Literal["calibrate"]
 
 
 # --------------------------------------------------------------------------
@@ -279,6 +342,10 @@ BusMessage = Annotated[
     | TargetScores
     | SensorSelection
     | SensorStatus
+    | BandPowerFrame
+    | TriggerLevel
+    | TriggerEvent
+    | SensorControl
     | ShowTargets
     | StimControl
     | StimulusProfile
