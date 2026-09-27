@@ -95,7 +95,6 @@ export interface SysStatusPayload {
   source: 'cyton' | 'synthetic' | 'replay';
   connected: boolean;
   replay: boolean;
-  local_mode: boolean;
   profile: 'auto' | 'hi' | 'lo';
   measured_refresh_hz: number | null;
   providers: Record<string, Record<string, boolean>>;

@@ -52,7 +52,7 @@ Each integration is load-bearing. Nothing is included solely to claim a track.
 | **Tiger Data** | Time-series sink for EEG, correlation scores and stimulus integrity; continuous aggregates drive the analytics panel (§18) | P1 |
 | **DigitalOcean** | Spectator relay droplet; Gradient AI as third LLM fallback (§19) | P2 |
 | **GoDaddy Registry** | Domain fronting the spectator view | P2 |
-| **Assurant** | Data-flow ledger, per-turn API cost, one-click fully-local mode (§20) | P3 |
+| **Assurant** | Data-flow ledger, per-turn API cost, automatic provider fallbacks (§20) | P3 |
 
 ---
 
@@ -418,6 +418,10 @@ generation:
   n_candidates: 3
   max_tokens: 2048
   timeout_s: 12.0
+  transient_retries: 1
+  retry_delay_s: 0.5
+  retry_jitter_s: 0.25
+  min_attempt_budget_s: 2.0
 
 extraction:
   enabled: true
@@ -450,7 +454,6 @@ spectator:
   send_graph_content: false
 
 privacy:
-  local_mode: false
   show_costs: true
   price_table:
     gemini_in_per_1k: 0.000075
@@ -497,8 +500,13 @@ EMOTIV_CLIENT_ID=
 EMOTIV_CLIENT_SECRET=
 
 DEMO_REPLAY=false
-LOCAL_MODE=false
 ```
+
+Retry settings under `generation` share the existing stage deadline. A stage
+allows one transient retry, delayed by 0.5 s plus up to 0.25 s jitter (or longer
+provider guidance), only if at least 2 s remain afterward. Token allowances
+and the 12 s deadline are unchanged. Configuration defaults mirror these
+values for callers constructing GenerationConfig directly.
 
 **Provider fallback chains** (`providers/registry.py`). Each link is skipped if its key is absent or its last call failed within 30 s:
 
@@ -651,7 +659,7 @@ browser has already stopped its output.
 | `graph.activate` | event | `{node_ids, edge_ids, reason}` |
 | `graph.bloom` | event | `{nodes, edges}` |
 | `fsm.state` | event | `{state, detail}` |
-| `sys.status` | 1 Hz | `{input_source, input_badge, source, connected, replay, local_mode, profile, measured_refresh_hz, providers, stimulus_integrity, telemetry_dropped}` |
+| `sys.status` | 1 Hz | `{input_source, input_badge, source, connected, replay, profile, measured_refresh_hz, providers, stimulus_integrity, telemetry_dropped}` |
 | `analytics.summary` | 2 s | `{accuracy_pct, mean_rho_by_target, selections_total, mean_selection_latency_s, itr_bits_per_min, drift}` |
 | `privacy.flow` | event | `{stage, destination, bytes, description}` |
 | `privacy.cost` | event | `{turn_id, items, turn_usd, session_usd}` |
@@ -692,7 +700,6 @@ class GraphEdge(BaseModel):
 | `POST` | `/api/calibration/start` | — | run an eTRCA block |
 | `GET` | `/api/session/latest` | — | most recent recording |
 | `GET` | `/api/analytics/summary` | — | continuous-aggregate rollup |
-| `POST` | `/api/privacy/local_mode` | `{enabled}` | toggle, no restart |
 | `GET` | `/api/privacy/flows` | — | what has left the machine |
 | `POST` | `/api/privacy/purge` | `{scope}` | delete stored personal data |
 | `GET` | `/api/spectator/link` | — | public URL + QR payload |
@@ -1519,9 +1526,11 @@ The instrumentation is one decorator on each provider method. Roughly 40 lines.
 
 **Cost visibility.** `cost.py` accumulates tokens, characters and audio seconds per turn, multiplies by `privacy.price_table`, emits `privacy.cost`. This is honest about something most AI demos hide: a system a disabled person depends on for speech has a running per-sentence cost, and if that is $0.004 per sentence then a day of conversation is a real number a family would want to know.
 
-**Local Mode.** One toggle. LLM truncates to a local endpoint then static; STT to `faster_whisper`; TTS to cache then Piper (no voice clone — **say this plainly in the UI, do not hide the downgrade**); spectator disconnects; telemetry goes local. A `LOCAL MODE` badge appears. No restart.
-
-**This is the demo moment.** Mid-pitch, flip the toggle, disconnect the network, complete another full turn — slower, generic voice, working. "This keeps working when the internet doesn't" is worth nothing asserted and a great deal demonstrated.
+**Automatic fallbacks.** There is no manual offline-mode switch. Provider
+failure advances through the configured chains: LLM to alternate providers
+then static, STT to local Whisper then manual input, and TTS through cached
+audio, ElevenLabs, installed Piper, then browser speech. Piper requires a local
+binary and voice model. These fallbacks do not guarantee on-device execution.
 
 **Purge.** `POST /api/privacy/purge` with scope `graph` drops and recreates the Kuzu database; `telemetry` deletes the session's rows; `all` does both plus clears the audio cache. Confirmation required. Twenty minutes of work, and the difference between a privacy panel that informs and one that gives control.
 
@@ -1550,8 +1559,8 @@ The instrumentation is one decorator on each provider method. Roughly 40 lines.
 | **18–22** | **CHECKPOINT 1.** All four processes, synthetic source, full turn on Machine A. Sleep rotation: two down, two up. | | | |
 | **22–26** | `telemetry.py` + migration + Tiger Cloud | Cyton live: first real classification | `SessionAnalytics.tsx` | `onboarding.py`, persona fixture, streamed bloom |
 | **26–29** | **CHECKPOINT 2.** Real EEG, real LLM, real voice, real telemetry, full turn end to end. | | | |
-| **29–32** | Deploy `spectator/`, wire it, point the domain | eTRCA + calibration **only if checkpoint 2 was clean** | `SpectatorQR.tsx`, `PrivacyPanel.tsx`, Local Mode | Speller (~2 h), pitch script, Devpost draft |
-| **32–34** | **FEATURE FREEZE.** `prerender_cache.py`. Backup video. Clean replay session. Verify Local Mode with the network physically off. | | | |
+| **29–32** | Deploy `spectator/`, wire it, point the domain | eTRCA + calibration **only if checkpoint 2 was clean** | `SpectatorQR.tsx`, `PrivacyPanel.tsx` | Speller (~2 h), pitch script, Devpost draft |
+| **32–34** | **FEATURE FREEZE.** `prerender_cache.py`. Backup video. Clean replay session. Verify automatic fallbacks with provider failures. | | | |
 | **34–36** | Devpost writeup with a distinct paragraph per track, README, `CREDITS.md`, rehearse three times with the cap on. | | | |
 
 ### 21.3 Critical path
@@ -1563,7 +1572,7 @@ Everything else can slip. **The keyboard adapter and the synthetic source are wh
 ### 21.4 Cut order
 
 1. eTRCA
-2. Privacy panel and Local Mode (forfeits Assurant)
+2. Privacy panel (forfeits Assurant)
 3. Speller
 4. Spectator relay (forfeits DigitalOcean; keep the Gradient provider, it is three env vars)
 5. Session Analytics panel (keep the telemetry *sink* — that is the substantive Tiger Data use)
@@ -1627,7 +1636,7 @@ Go/no-go gates, in order.
 | A15 | Analytics | After 20 cued trials the panel shows a non-empty accuracy series and five distinct per-target sparklines |
 | A16 | Spectator | A phone on cellular data loads the domain and shows selections within 2 s |
 | A17 | Spectator privacy | Inspect outbound payloads: no raw EEG, no graph node text, no keys |
-| A18 | **Local Mode with the network physically off** | Full turn completes, spoken in the Piper voice, graph updated, no exceptions |
+| A18 | **Automatic provider fallback** | Failed providers advance to their next configured link; static replies and unavailable learning are explicit |
 | A19 | Purge | `purge {scope:"all"}` empties graph and telemetry; dashboard returns to onboarding |
 
 ---
@@ -1673,6 +1682,6 @@ The Devpost writeup needs **one distinct paragraph per track**, naming the speci
 | **Tiger Data** | 250 Hz EEG, 20 scores/s and frame-integrity metrics into hypertables. Continuous aggregates drive a live analytics panel showing accuracy, per-target correlation drift and measured Information Transfer Rate. The write path is a bounded drop-on-overflow queue so the database can never stall a real-time neural pipeline. | §18 |
 | **DigitalOcean** | Droplet-hosted spectator relay; judges watch on their phones via a deliberately write-only sanitised stream. Gradient AI is the third link in the LLM chain. | §19 |
 | **GoDaddy** | Domain fronting the spectator view. | §19 |
-| **Assurant** | A system holding a disabled person's life should show what leaves the machine. Live data-flow ledger, per-turn cost in USD, one-click purge, and a Local Mode demonstrated on stage by disabling the network mid-pitch. | §20 |
+| **Assurant** | A system holding a disabled person's life should show what leaves the machine. Live data-flow ledger, per-turn cost in USD, one-click purge, and automatic provider fallbacks demonstrated with failed cloud requests. | §20 |
 
 **Do not claim a track whose component was cut.** Update the Devpost selections at hour 34 against what actually runs, not against this document.
