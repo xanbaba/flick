@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from collections.abc import AsyncIterator
 from pathlib import Path
 from unittest.mock import AsyncMock
 
@@ -20,9 +21,9 @@ from shared.schemas import Selection
 
 
 @pytest.fixture
-def app_orchestrator(
+async def app_orchestrator(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> tuple[Orchestrator, AsyncMock]:
+) -> AsyncIterator[tuple[Orchestrator, AsyncMock]]:
     llm = AsyncMock(spec=LLMProvider)
     llm.name = "test"
     monkeypatch.setattr(registry, "_llm", llm)
@@ -35,7 +36,12 @@ def app_orchestrator(
     orch = main.create_app().state.orchestrator
     # This test bypasses lifespan and has no browser connection.
     orch._playback = None
-    return orch, llm
+    # The input lifecycle is required even when the app lifespan is bypassed.
+    await orch.input.start()
+    try:
+        yield orch, llm
+    finally:
+        await orch.input.stop()
 
 
 async def test_app_generates_prompted_intents_and_candidates(

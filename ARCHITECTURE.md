@@ -14,8 +14,9 @@ the repository had a working keyboard/SSVEP-oriented conversation pipeline and
 Kuzu memory. Zahid's sensor branch now supplies Cortex acquisition, baseline
 calibration, and clench/eyes-closed detectors. Its sensor messages have shared
 Python/TypeScript contracts accepted by the bus, and both processes share the
-sensor settings model. The input adapter, scan controller, and conversation UI
-still need integration. Tiger storage and explicit recent-conversation context
+sensor settings model. The BCI adapter and shared scan controller now connect to
+the backend selection lifecycle. The conversation UI still needs to render scan
+events and send trial-correlated keyboard controls. Tiger storage and recent context
 remain unimplemented. Passing
 sensor tests does not establish an integrated live conversation.
 
@@ -236,6 +237,12 @@ scan:
   trial_timeout_s: 60
   hold_after_select_s: 0.6
   start_idx: 0
+  event_max_age_s: 1.0
+  status_max_age_s: 2.5
+  clock_tolerance_s: 0.1
+  source_clock_offset_s: 0.0
+  coalesce_s: 0.03
+  poll_interval_s: 0.02
 database:
   memory_pool_max: 5
   query_timeout_s: 0.3
@@ -323,6 +330,16 @@ The unused profile/training status fields remain for import/wire compatibility.
 
 `client.key_press` carries displayed `trial_id`, timestamp and key: `n`, `s`, or
 `1`–`4`. Only the keyboard adapter accepts it. Ignore shortcuts while typing.
+The shared model permits a null trial ID only for the existing legacy numeric
+keyboard path; step-scan requires an exact non-null trial match. Selections add
+`trigger_kind` (nullable) and `moves` (default zero) without breaking older adapters.
+BCI source timestamps are converted using configured `source_clock_offset_s`
+(zero for the same-PC UNIX clock). Reject old/future publication and source times;
+never estimate a clock offset from a delayed trigger. Readiness expires after
+`status_max_age_s`. Buffer triggers for `coalesce_s` to arbitrate same-sample
+next/select in favor of select. Events outside that bounded window cannot be
+retroactively reordered. Require an observed below-threshold level for each role
+after trial activation/readiness recovery before accepting its trigger.
 Keep `client.request_snapshot` and correlated `client.playback_complete` with
 existing playback ID/outcome semantics.
 
@@ -362,6 +379,20 @@ disconnect keeps capture gated until restart, as implemented. Preserve manual
 partner text for recovery. Playback deadline remains separate from scan timeout.
 
 ## 7. Live input and scan
+
+`inputs/scan.py` owns trial/highlight state and monotonic timeout/confirmation
+timing. `inputs/bci.py` consumes sensor messages with bounded nonblocking ZMQ
+reads, exposes actual readiness, and yields `Selection` only after confirmation.
+`KeyboardInput(n_targets=4, config=...)` uses the same controller and requires
+matching trial IDs. The existing five-slot numeric keyboard UI remains compatible
+until its frontend migration; it is not the completed four-tile product.
+
+The backend factory supports `input.adapter: bci` with four slots, publishes
+scan events, restores active highlight on reconnect, and closes input on timeout,
+round exit and stop. Neither adapter owns a stimulus/control publisher. Consumers
+must run both `selections()` and `events()`; the orchestrator owns those listeners.
+BCI badges distinguish live muscle/alpha control from synthetic/replay inputs.
+Actual headset reliability still requires rehearsal and the P1 fixes below.
 
 Verify Cortex authorization/session/subscription behavior against the installed
 tooling. Complete eyes-open baseline calibration, then verify both actions before

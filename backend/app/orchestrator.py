@@ -37,6 +37,7 @@ from backend.app.services.voice import VoiceService
 from backend.app.services.worker import MemoryWorker, run_memory
 from backend.providers.base import Transcript
 from inputs.base import InputSource
+from inputs.scan import ScanInput
 from shared.bus import Publisher
 from shared.config import AppConfig
 from shared.logging import get_logger
@@ -117,8 +118,9 @@ class Orchestrator:
         self._utterance = ""
         self._intent = ""
         self._turn_id = ""
-        self._selection_future: asyncio.Future[Selection] | None = None
+        self._selection_future: asyncio.Future[Selection | None] | None = None
         self._selection_task: asyncio.Task[None] | None = None
+        self._scan_task: asyncio.Task[None] | None = None
         self._grounding_ids: list[str] = []
         self._turn_lock = asyncio.Lock()
         self._stim: Publisher | None = None
@@ -145,8 +147,28 @@ class Orchestrator:
         if self.input.name == "keyboard" and self._stim_address is not None:
             self._stim = Publisher(self._stim_address)
         self._selection_task = asyncio.create_task(self._selection_loop())
+        if isinstance(self.input, ScanInput):
+            self._scan_task = asyncio.create_task(self._scan_loop(self.input))
+
+    async def _scan_loop(self, source: ScanInput) -> None:
+        async for kind, payload in source.events():
+            # Keep the legacy five-tile UI stable until its frontend migration.
+            if source.n_targets == 4:
+                await self._broadcast(kind, payload)
+            if (
+                kind == "scan.idle"
+                and payload.get("reason") in ("timeout", "sensor_transport_error", "input_overflow")
+                and payload.get("trial_id") == self.trial_id
+            ):
+                future = self._selection_future
+                if future is not None and not future.done():
+                    future.set_result(None)
 
     async def _stop_input(self) -> None:
+        if self._scan_task is not None:
+            self._scan_task.cancel()
+            await asyncio.gather(self._scan_task, return_exceptions=True)
+            self._scan_task = None
         if self._selection_task is not None:
             self._selection_task.cancel()
             await asyncio.gather(self._selection_task, return_exceptions=True)
@@ -244,6 +266,11 @@ class Orchestrator:
                     },
                 )
             )
+        if isinstance(self.input, ScanInput) and self.input.n_targets == 4:
+            if self.input.scan.active():
+                events.append(("scan.targets", self.input.scan.snapshot()))
+            else:
+                events.append(("scan.idle", {"trial_id": self.trial_id, "reason": "inactive"}))
         events.append(("fsm.state", {"state": self.state, "detail": "connected"}))
         return events
 
@@ -411,6 +438,8 @@ class Orchestrator:
             return await asyncio.wait_for(self._selection_future, self.wait_timeout_s)
         except TimeoutError:
             return None
+        finally:
+            self.input.close_trial("round_closed")
 
     def _publish_show_targets(self, labels: list[str], round_name: str) -> None:
         if self._stim is None or self.trial_id is None:
@@ -512,6 +541,7 @@ class Orchestrator:
             await self._idle(detail, rearm_mic=outcome != "unconfirmed")
 
     async def _idle(self, detail: str, *, rearm_mic: bool = True) -> None:
+        self.input.close_trial("idle")
         self.trial_id = None
         self._selection_future = None
         self.speech.gate(self._playback_unconfirmed or not rearm_mic)

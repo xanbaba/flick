@@ -33,6 +33,17 @@ sensor:
   record_queue_max: 20000
   replay_file: null
 
+scan:
+  trial_timeout_s: 60
+  hold_after_select_s: 0.6
+  start_idx: 0
+  event_max_age_s: 1.0
+  status_max_age_s: 2.5
+  clock_tolerance_s: 0.1
+  source_clock_offset_s: 0.0
+  coalesce_s: 0.03
+  poll_interval_s: 0.02
+
 mode:
   source: synthetic          # cyton | synthetic | replay   (sensor process)
   targets: 5                 # 5 | 4

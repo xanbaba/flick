@@ -12,6 +12,7 @@ import asyncio
 import base64
 import time
 from unittest.mock import AsyncMock
+from uuid import uuid4
 
 import pytest
 
@@ -27,9 +28,10 @@ from backend.app.orchestrator import (
 from backend.app.services.cost import CostTracker
 from backend.app.services.speech import SpeechService
 from backend.app.services.voice import SpokenResult, VoiceService
+from inputs.bci import BciInput
 from inputs.keyboard import KeyboardInput
-from shared.config import get_settings
-from shared.schemas import KeyPress
+from shared.config import ScanConfig, SensorSettings, get_settings
+from shared.schemas import KeyPress, SensorStatus, TriggerEvent, TriggerLevel
 
 
 def _press(keyboard: KeyboardInput, key: str) -> None:
@@ -205,17 +207,124 @@ def test_out_of_range_key_is_dropped_by_the_adapter() -> None:
 @pytest.mark.parametrize("key", ["1", "2", "3", "4", "5"])
 async def test_each_configured_key_maps_onto_a_target(key: str) -> None:
     keyboard = KeyboardInput(n_targets=5)
-    await keyboard.set_targets("trial-1", ["a", "b", "c", "d", "Cancel"], "intent")
-    keyboard.handle_key_press(KeyPress(type="client.key_press", ts=time.time(), key=key))
-    selection = await asyncio.wait_for(anext(keyboard.selections()), timeout=0.2)
-    assert selection.target_idx == int(key) - 1
-    assert selection.trial_id == "trial-1"
+    await keyboard.start()
+    try:
+        await keyboard.set_targets("trial-1", ["a", "b", "c", "d", "Cancel"], "intent")
+        keyboard.handle_key_press(KeyPress(type="client.key_press", ts=time.time(), key=key))
+        selection = await asyncio.wait_for(anext(keyboard.selections()), timeout=0.2)
+        assert selection.target_idx == int(key) - 1
+        assert selection.trial_id == "trial-1"
+    finally:
+        await keyboard.stop()
 
 
 async def _wait_state(orch: Orchestrator, state: str) -> None:
     async with asyncio.timeout(2):
         while orch.state != state:
             await asyncio.sleep(0.005)
+
+
+async def _bci_pick(bci: BciInput, index: int) -> None:
+    bci.handle_message(
+        SensorStatus(
+            ts=time.time(), source="synthetic", connected=True, calibrated=True, armed=True
+        )
+    )
+    for _ in range(5):
+        role = "select" if bci.scan.highlight_idx == index else "next"
+        bci.handle_message(
+            TriggerLevel(
+                ts=time.time(), next_level=0, next_threshold=8, select_level=0, select_threshold=2
+            )
+        )
+        ts = time.time()
+        bci.handle_message(
+            TriggerEvent(
+                ts=ts,
+                source_ts=ts,
+                event_id=str(uuid4()),
+                role=role,
+                kind="eyes_closed" if role == "select" else "jaw_clench",
+                strength=0.9,
+            )
+        )
+        await asyncio.sleep(0.06)
+        if role == "select":
+            return
+    raise AssertionError("target was not reachable")
+
+
+async def test_bci_drives_both_rounds_and_scan_snapshot(tmp_path) -> None:
+    orch, _, events = await _harness(tmp_path)
+    bci = BciInput(
+        config=ScanConfig(hold_after_select_s=0.01),
+        sensor=SensorSettings(source="synthetic", pub_address=f"inproc://{uuid4()}"),
+    )
+    orch.voice.speak = AsyncMock(
+        return_value=SpokenResult(
+            text="Yes", audio=b"", voice="browser", cached=False, latency_ms=0
+        )
+    )
+    try:
+        await orch.swap_input(bci)
+        await orch.seed("bio", "Alex")
+        turn = asyncio.create_task(orch.submit_utterance("hello there"))
+        await _wait_state(orch, INTENT_WAIT)
+        snapshot = dict(orch.connection_events())
+        assert snapshot["scan.targets"]["trial_id"] == orch.trial_id
+        assert len(snapshot["scan.targets"]["labels"]) == 4
+        await _bci_pick(bci, 0)
+        await _wait_state(orch, CANDIDATE_WAIT)
+        await _bci_pick(bci, 0)
+        await asyncio.wait_for(turn, 2)
+        assert orch.state == IDLE and not bci.scan.active()
+        assert [kind for kind, _ in events].count("scan.selected") == 2
+        assert any(kind == "conv.spoken" for kind, _ in events)
+    finally:
+        await orch.stop()
+
+
+async def test_bci_candidate_cancel_returns_to_fresh_intent_trial(tmp_path) -> None:
+    orch, _, _ = await _harness(tmp_path)
+    bci = BciInput(
+        config=ScanConfig(hold_after_select_s=0),
+        sensor=SensorSettings(source="synthetic", pub_address=f"inproc://{uuid4()}"),
+    )
+    try:
+        await orch.swap_input(bci)
+        await orch.seed("bio", "Alex")
+        turn = asyncio.create_task(orch.submit_utterance("hello there"))
+        await _wait_state(orch, INTENT_WAIT)
+        original_id, labels = orch.trial_id, list(bci.scan.labels)
+        await _bci_pick(bci, 0)
+        await _wait_state(orch, CANDIDATE_WAIT)
+        await _bci_pick(bci, 3)
+        await _wait_state(orch, INTENT_WAIT)
+        assert orch.trial_id != original_id and bci.scan.labels == labels
+        assert bci.scan.highlight_idx == 0 and bci.scan.moves == 0
+        await _bci_pick(bci, 3)
+        await asyncio.wait_for(turn, 2)
+        assert orch.state == IDLE
+    finally:
+        await orch.stop()
+
+
+async def test_scan_timeout_closes_backend_future_before_outer_timeout(tmp_path) -> None:
+    orch, _, events = await _harness(tmp_path, wait_timeout_s=2)
+    bci = BciInput(
+        config=ScanConfig(trial_timeout_s=0.05),
+        sensor=SensorSettings(source="synthetic", pub_address=f"inproc://{uuid4()}"),
+    )
+    try:
+        await orch.swap_input(bci)
+        await orch.seed("bio", "Alex")
+        await asyncio.wait_for(orch.submit_utterance("hello there"), 1)
+        assert orch.state == IDLE and bci.scan.trial_id is None
+        assert any(
+            kind == "scan.idle" and payload["reason"] == "timeout" for kind, payload in events
+        )
+    finally:
+        await orch.stop()
 
 
 async def test_candidate_cancel_stays_on_key_five_and_blank_key_is_ignored(tmp_path) -> None:
