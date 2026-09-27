@@ -420,3 +420,36 @@ async def test_synthesis_failure_recovers_without_claiming_speech(tmp_path) -> N
         assert "Speech unavailable" in events[-1][1]["detail"]
     finally:
         await orch.stop()
+
+
+class _FailingRetrieval:
+    def retrieve(self, *_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("retrieval bug")
+
+
+async def test_non_memory_retrieval_error_returns_to_idle(tmp_path) -> None:
+    orch, _keyboard, _events = await _harness(tmp_path)
+    try:
+        await orch.seed("bio", "Marcus")
+        orch.retrieval = _FailingRetrieval()  # type: ignore[assignment]
+        await orch.submit_utterance("how are you")
+        assert orch.state == IDLE
+    finally:
+        await orch.stop()
+
+
+async def test_unexpected_turn_error_returns_to_idle(tmp_path) -> None:
+    orch, _keyboard, events = await _harness(tmp_path)
+    try:
+        await orch.seed("bio", "Marcus")
+        orch._intent_round = AsyncMock(side_effect=RuntimeError("boom"))  # type: ignore[method-assign]
+        await orch.submit_utterance("hello")
+        assert orch.state == IDLE
+        await orch.submit_utterance("hello again")  # next utterance is accepted
+        assert orch._intent_round.await_count == 2
+        assert any(
+            kind == "fsm.state" and payload["state"] == IDLE and "wrong" in str(payload["detail"])
+            for kind, payload in events
+        )
+    finally:
+        await orch.stop()
