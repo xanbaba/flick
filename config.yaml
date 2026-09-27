@@ -86,8 +86,12 @@ retrieval:
 generation:
   n_intents: 4
   n_candidates: 3
-  max_tokens: 400
-  timeout_s: 6.0
+  max_tokens: 2048
+  timeout_s: 12.0
+  transient_retries: 1
+  retry_delay_s: 0.5
+  retry_jitter_s: 0.25
+  min_attempt_budget_s: 2.0
 
 extraction:
   enabled: true
@@ -120,7 +124,6 @@ spectator:
   send_graph_content: false
 
 privacy:
-  local_mode: false
   show_costs: true
   price_table:
     gemini_in_per_1k: 0.000075

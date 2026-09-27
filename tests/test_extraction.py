@@ -50,13 +50,13 @@ def test_disabled_extraction_is_a_no_op(graph: GraphService, config: ExtractionC
     assert graph.node_count() == 1  # only "user"
 
 
-def test_static_fallback_never_raises_and_commits_nothing(
+def test_static_fallback_reports_unavailable_and_commits_nothing(
     graph: GraphService, config: ExtractionConfig
 ) -> None:
     svc = ExtractionService(graph, llm=StaticLLMProvider(), config=config)
-    result = asyncio.run(svc.extract_and_writeback("Do you need anything?", "A new chair."))
-    assert result.committed_node_ids == []
-    assert result.committed_edge_ids == []
+    with pytest.raises(RuntimeError, match="Fact extraction unavailable"):
+        asyncio.run(svc.extract_and_writeback("Do you need anything?", "A new chair."))
+    assert graph.node_count() == 1
 
 
 def test_extraction_commits_a_confident_node_and_edge(

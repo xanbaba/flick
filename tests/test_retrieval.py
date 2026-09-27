@@ -111,7 +111,7 @@ def test_retrieve_returns_grounded_nodes_with_rendered_context(
 def test_partner_boost_changes_the_selected_facts(
     seeded_graph: GraphService, small_config: RetrievalConfig
 ) -> None:
-    service = RetrievalService(seeded_graph, config=small_config)
+    service = RetrievalService(seeded_graph, config=small_config.model_copy(update={"select_k": 1}))
 
     result_sofia = service.retrieve("How are you?", partner_id="sofia")
     result_priya = service.retrieve("How are you?", partner_id="priya")
@@ -120,7 +120,7 @@ def test_partner_boost_changes_the_selected_facts(
     priya_ids = {n.id for n in result_priya.nodes}
     assert "sofia" in sofia_ids
     assert "priya" in priya_ids
-    # the two listeners pull in different one-hop neighbourhoods
+    # With one fact available, the identified listener must determine the context.
     assert sofia_ids != priya_ids
 
 

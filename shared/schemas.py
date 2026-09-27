@@ -132,8 +132,17 @@ class RequestSnapshot(BaseModel):
     ts: float
 
 
+class PlaybackComplete(BaseModel):
+    """Sent only after this client's matching audio has ended or stopped."""
+
+    type: Literal["client.playback_complete"]
+    ts: float
+    playback_id: str = Field(min_length=1)
+    outcome: Literal["completed", "failed"]
+
+
 ClientMessage = Annotated[
-    KeyPress | RequestSnapshot,
+    KeyPress | RequestSnapshot | PlaybackComplete,
     Field(discriminator="type"),
 ]
 

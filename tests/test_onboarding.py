@@ -8,6 +8,7 @@ from pathlib import Path
 from backend.app.services.generation import GenerationService
 from backend.app.services.graph import GraphService
 from backend.app.services.onboarding import BLOOM_BATCH, OnboardingService, load_fixture
+from backend.app.services.persona import DEMO_BIO, DEMO_NAME
 from backend.app.services.retrieval import RetrievalService, time_retrieval
 from backend.providers.llm_static import StaticLLMProvider
 
@@ -28,7 +29,7 @@ def test_static_onboarding_seeds_fixture_and_blooms_in_batches(tmp_path: Path) -
     service = OnboardingService(graph, llm=StaticLLMProvider(), interval_s=0)
 
     async def collect() -> list:
-        return [batch async for batch in service.seed("Marcus Alvarez bio", "Marcus Alvarez")]
+        return [batch async for batch in service.seed(DEMO_BIO, DEMO_NAME)]
 
     batches = asyncio.run(collect())
     assert graph.node_count() == len(load_fixture()["nodes"])
@@ -37,7 +38,7 @@ def test_static_onboarding_seeds_fixture_and_blooms_in_batches(tmp_path: Path) -
     assert sum(len(batch.nodes) for batch in batches) == graph.node_count()
 
 
-def test_seeded_turn_yields_three_grounded_sentences(tmp_path: Path) -> None:
+def test_seeded_turn_fallback_preserves_selected_intent(tmp_path: Path) -> None:
     graph = GraphService(db_path=tmp_path / "kuzu", embedding_dim=384)
     graph.seed_from_json(load_fixture())
     retrieval = RetrievalService(graph)
@@ -59,7 +60,8 @@ def test_seeded_turn_yields_three_grounded_sentences(tmp_path: Path) -> None:
             intent="Talk about Rosie",
         )
     )
-    known = {node.id for node in graph.snapshot()[0]}
-    assert len(candidates.candidates) == 3
-    assert candidates.grounding
-    assert set(candidates.grounding) <= known
+    assert result.nodes and result.context_text
+    assert candidates.candidates == ["Talk about Rosie"]
+    assert candidates.grounding == []
+    assert candidates.source == "fallback"
+    graph.close()

@@ -15,7 +15,10 @@ variable-length path.
 
 from __future__ import annotations
 
+import math
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -164,9 +167,16 @@ def _fact_for(kind: str, props: dict[str, Any]) -> str:
     """
     if kind == "Memory":
         return str(props.get("text") or "")
-    notes = props.get("notes")
-    if notes:
-        return str(notes)
+    notes = str(props.get("notes") or "")
+    if kind == "Person":
+        relationship = props.get("relationship")
+        terms = props.get("address_terms") or []
+        if relationship and relationship != "self":
+            notes += f" {props.get('name', '')} is your {relationship}."
+        if terms:
+            notes += f" You call {props.get('name', '')} {', '.join(terms)}."
+    if notes.strip():
+        return notes.strip()
     return str(props.get("name") or "")
 
 
@@ -639,61 +649,104 @@ class GraphService:
     # Seeding (section 14)
     # ---------------------------------------------------------------- #
 
+    @contextmanager
+    def transaction(self) -> Iterator[None]:
+        """Keep memory writes atomic, including cache invalidation on rollback."""
+        self._conn.execute("BEGIN TRANSACTION")
+        try:
+            yield
+            self._conn.execute("COMMIT")
+        except BaseException:
+            self._conn.execute("ROLLBACK")
+            raise
+        finally:
+            self._vector_cache = None
+
     def seed_from_json(self, payload: dict[str, Any]) -> SeedResult:
-        """Insert a validated bulk graph payload.
+        """Validate proposals before atomically inserting them.
 
-        ``payload`` has ``{"nodes": [...], "edges": [...]}``. Malformed
-        entries are dropped rather than failing the whole seed (section
-        14, step 2). A node needs at least ``kind`` and a display-text
-        field (``name`` or ``text``); an edge needs ``kind``, ``source``
-        and ``target`` node ids that were present in ``nodes``.
+        Malformed proposals are dropped. Storage errors are allowed to escape
+        and roll back the entire transaction instead of becoming partial seeds.
         """
+        nodes: list[tuple[str, dict[str, Any]]] = []
+        kinds: dict[str, str] = {}
+        aliases: dict[str, str] = {}
         dropped = 0
-        node_ids: list[str] = []
-        alias_to_id: dict[str, str] = {}
-
         for raw in payload.get("nodes", []):
-            kind = raw.get("kind")
-            if kind not in NODE_COLUMN_TYPES:
+            if (
+                not isinstance(raw, dict)
+                or not isinstance(raw.get("kind"), str)
+                or raw["kind"] not in NODE_COLUMN_TYPES
+            ):
                 dropped += 1
                 continue
+            kind = raw["kind"]
+            props = dict(raw)
             text_col = NODE_TEXT_COLUMN[kind]
-            if not raw.get(text_col) and not raw.get("name"):
+            text = props.get(text_col) or props.get("name")
+            if not isinstance(text, str) or not text.strip():
                 dropped += 1
                 continue
-            try:
-                node_id = self.upsert_node(kind, raw)
-            except Exception:
+            props[text_col] = text.strip()
+            if "id" in props and props["id"] is not None and not isinstance(props["id"], str):
                 dropped += 1
                 continue
-            node_ids.append(node_id)
-            alias = raw.get("id") or raw.get(text_col) or raw.get("name")
-            if alias:
-                alias_to_id[str(alias)] = node_id
+            node_id = props.get("id") or f"{kind.lower()}_{uuid.uuid4().hex[:12]}"
+            valid = isinstance(node_id, str) and node_id not in kinds
+            for col, sql_type in NODE_COLUMN_TYPES[kind].items():
+                value = props.get(col, [] if sql_type == "STRING[]" else "")
+                valid = valid and (
+                    isinstance(value, list) and all(isinstance(v, str) for v in value)
+                    if sql_type == "STRING[]"
+                    else isinstance(value, str)
+                )
+            weight = props.get("weight", 1.0)
+            valid = valid and isinstance(weight, int | float) and math.isfinite(weight)
+            if not valid:
+                dropped += 1
+                continue
+            props["id"] = node_id
+            # External JSON never supplies database timestamp objects.
+            props.pop("last_accessed", None)
+            kinds[node_id] = kind
+            aliases[str(raw.get("id") or text)] = node_id
+            nodes.append((kind, props))
 
-        edge_count = 0
+        edges: list[tuple[str, str, str, dict[str, Any]]] = []
         for raw in payload.get("edges", []):
-            kind = raw.get("kind")
-            source = raw.get("source")
-            target = raw.get("target")
-            if kind not in REL_PAIRS or source is None or target is None:
+            if (
+                not isinstance(raw, dict)
+                or not isinstance(raw.get("kind"), str)
+                or raw["kind"] not in REL_PAIRS
+            ):
                 dropped += 1
                 continue
-            src_id = alias_to_id.get(str(source), str(source))
-            dst_id = alias_to_id.get(str(target), str(target))
-            try:
-                self.upsert_edge(kind, src_id, dst_id, raw)
-            except Exception:
+            kind = raw["kind"]
+            src = aliases.get(str(raw.get("source")), str(raw.get("source")))
+            dst = aliases.get(str(raw.get("target")), str(raw.get("target")))
+            valid = (kinds.get(src), kinds.get(dst)) in REL_PAIRS[kind]
+            for col in ("weight", "strength"):
+                value = raw.get(col, 1.0)
+                valid = valid and isinstance(value, int | float) and math.isfinite(value)
+            valid = valid and isinstance(raw.get("count", 1), int)
+            if not valid:
                 dropped += 1
                 continue
-            edge_count += 1
+            edges.append((kind, src, dst, raw))
 
-        self._vector_cache = None
+        with self.transaction():
+            for kind, props in nodes:
+                self.upsert_node(kind, props)
+            for kind, src, dst, props in edges:
+                self.upsert_edge(kind, src, dst, props)
         return SeedResult(
-            node_count=len(node_ids), edge_count=edge_count, node_ids=node_ids, dropped=dropped
+            node_count=len(nodes),
+            edge_count=len(edges),
+            node_ids=list(kinds),
+            dropped=dropped,
         )
 
     def close(self) -> None:
-        """Release the Kuzu connection/database handles (mainly for tests)."""
-        del self._conn
-        del self._db
+        """Release handles explicitly so restart can reopen the same database."""
+        self._conn.close()
+        self._db.close()

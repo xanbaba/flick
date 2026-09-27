@@ -44,11 +44,13 @@ from backend.providers.embed_minilm import MiniLmEmbeddingProvider
 from backend.providers.llm_gemini import GeminiLLMProvider
 from backend.providers.llm_openai_compat import OpenAICompatLLMProvider
 from backend.providers.llm_static import StaticLLMProvider
+from backend.providers.rate_limits import RateLimitError
+from backend.providers.resilience import LLMStage
 from backend.providers.stt_deepgram import DeepgramSTTProvider
 from backend.providers.stt_faster_whisper import FasterWhisperSTTProvider
 from backend.providers.tts_elevenlabs import ElevenLabsTTSProvider
 from backend.providers.tts_piper import PiperTTSProvider
-from shared.config import EnvSettings, get_settings
+from shared.config import EnvSettings, GenerationConfig, get_settings
 from shared.logging import get_logger
 
 logger = get_logger(__name__)
@@ -81,6 +83,12 @@ class CircuitBreaker:
         self._consecutive_failures += 1
         if self._consecutive_failures >= self._failure_threshold:
             self._unhealthy_until = time.monotonic() + self._cooldown_s
+
+    def record_rate_limit(self, retry_after_s: float | None) -> None:
+        self._unhealthy_until = max(
+            self._unhealthy_until,
+            time.monotonic() + max(self._cooldown_s, retry_after_s or 0.0),
+        )
 
 
 class ManualSTTProvider(STTProvider):
@@ -150,6 +158,16 @@ class _FallbackChain(Generic[T]):
                 continue
             try:
                 result = await self._method(link)(*args, **kwargs)
+            except RateLimitError as exc:
+                breaker.record_rate_limit(exc.retry_after_s)
+                last_exc = exc
+                logger.warning(
+                    "provider.rate_limited",
+                    provider=link.name,
+                    retry_after_s=exc.retry_after_s,
+                    quota_ids=exc.quota_ids,
+                )
+                continue
             except Exception as exc:
                 breaker.record_failure()
                 last_exc = exc
@@ -166,6 +184,13 @@ class LLMFallbackChain(LLMProvider):
 
     def __init__(self, links: list[LLMProvider]) -> None:
         self._chain: _FallbackChain[str] = _FallbackChain(links, lambda p: p.complete)
+        self._links = links
+
+    def new_stage(self, config: GenerationConfig, stage: str) -> LLMStage:
+        def served(name: str) -> None:
+            self._chain.last_served_by = name
+
+        return LLMStage(self._links, self._chain._breakers, config, stage, served=served)
 
     async def complete(
         self,
@@ -176,9 +201,16 @@ class LLMFallbackChain(LLMProvider):
         max_tokens: int = 400,
         timeout: float = 6.0,
     ) -> str:
-        return await self._chain.call(
-            system, user, json_mode=json_mode, max_tokens=max_tokens, timeout=timeout
+        config = get_settings().config.generation.model_copy(update={"timeout_s": timeout})
+        result = await self.new_stage(config, "completion").generate(
+            system,
+            user,
+            lambda raw: raw,
+            lambda original, raw: original,
+            max_tokens=max_tokens,
+            json_mode=json_mode,
         )
+        return result.value if result.value is not None else ("{}" if json_mode else "")
 
     def health(self) -> dict[str, bool]:
         return self._chain.health()
