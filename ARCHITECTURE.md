@@ -247,6 +247,8 @@ database:
   memory_pool_max: 5
   query_timeout_s: 0.3
   write_timeout_s: 1.0
+  connect_timeout_s: 10.0
+  migration_timeout_s: 30.0
 graph:
   profile_id: user
   embedding_dim: 384
@@ -290,6 +292,13 @@ Never print or commit values. A local database is not automatic failover and doe
 not demonstrate the Tiger Cloud sponsor integration.
 
 ## 6. Reduced contracts
+
+Database and conversation settings in section 5 are runtime contracts. Startup
+connection and forward migrations have separate bounded budgets. `graph.db_path`
+remains an optional legacy import/test setting, not an active storage destination.
+`sys.status` includes `memory_available`, `memory_store`
+(`tiger/local_postgres/unconfigured/test`) and nullable `memory_error`, distinguishing
+unavailable storage from a reachable store without a profile.
 
 Keep message `type`, UNIX-seconds `ts`, typed validation, and Python/TypeScript
 parity. Browser envelopes remain `{type, ts, payload}`. Implement the next contract

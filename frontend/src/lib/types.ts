@@ -119,6 +119,9 @@ export interface GraphEdge { id: string; source: string; target: string; kind: s
 // sys.status is assembled by the backend, not a pydantic model. The live payload
 // uses a provider-health map, and refresh / integrity are null until P2 exists.
 export interface SysStatusPayload {
+  memory_available?: boolean;
+  memory_store?: 'tiger' | 'local_postgres' | 'unconfigured' | 'test';
+  memory_error?: string | null;
   input_source: string;
   input_badge: string | null; // rendered high-contrast whenever non-null (§7.6)
   source: 'emotiv' | 'cyton' | 'synthetic' | 'replay';
